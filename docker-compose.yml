@@ -1,5 +1,23 @@
 # Evolu-IA — stack da VPS. Todas as portas publicadas apenas em 127.0.0.1; o nginx do host termina TLS.
+# Contêineres falam com o banco pela rede interna (db:5432); a porta 5442 do host serve só a migrations/testes locais.
 name: evolu-ia
+
+x-app-env: &app-env
+  APP_MODE: ${APP_MODE:?}
+  APP_BASE_URL: ${APP_BASE_URL:?}
+  APP_TIMEZONE_DEFAULT: ${APP_TIMEZONE_DEFAULT:-America/Sao_Paulo}
+  DATABASE_URL: postgresql://evolu_app:${EVOLU_APP_PASSWORD:?}@db:5432/evolu
+  WORKER_DATABASE_URL: postgresql://evolu_worker:${EVOLU_WORKER_PASSWORD:?}@db:5432/evolu
+  AUTH_PROVIDER: ${AUTH_PROVIDER:?}
+  OIDC_ISSUER: ${OIDC_ISSUER:-}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+  AUTH_REQUIRE_MFA: ${AUTH_REQUIRE_MFA:-true}
+  SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+  SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-60}
+  STORAGE_DIR: /data/storage
+  UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-10485760}
+  AI_PROVIDER: ${AI_PROVIDER:-none}
 
 services:
   db:
@@ -11,9 +29,11 @@ services:
       EVOLU_OWNER_PASSWORD: ${EVOLU_OWNER_PASSWORD:?}
       EVOLU_APP_PASSWORD: ${EVOLU_APP_PASSWORD:?}
       EVOLU_WORKER_PASSWORD: ${EVOLU_WORKER_PASSWORD:?}
+      ZITADEL_DB_PASSWORD: ${ZITADEL_DB_PASSWORD:?}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/00-roles.sh:/docker-entrypoint-initdb.d/00-roles.sh:ro
+      - ./docker/postgres/10-zitadel.sh:/docker-entrypoint-initdb.d/10-zitadel.sh:ro
     ports:
       - "127.0.0.1:5442:5432"
     healthcheck:
@@ -23,5 +43,119 @@ services:
       retries: 20
     shm_size: 256mb
 
+  web:
+    build: .
+    image: evolu-ia-app:latest
+    restart: unless-stopped
+    environment: *app-env
+    volumes:
+      - storage:/data/storage
+    ports:
+      - "127.0.0.1:3140:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  worker:
+    image: evolu-ia-app:latest
+    restart: unless-stopped
+    command: ["node_modules/.bin/tsx", "apps/worker/src/main.ts"]
+    environment: *app-env
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  zitadel-api:
+    image: ghcr.io/zitadel/zitadel:${ZITADEL_VERSION:?}
+    restart: unless-stopped
+    user: "0"
+    command: start-from-init --masterkey "${ZITADEL_MASTERKEY:?}"
+    environment:
+      ZITADEL_PORT: 8080
+      ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN:?}
+      ZITADEL_EXTERNALPORT: 443
+      ZITADEL_EXTERNALSECURE: "true"
+      ZITADEL_TLS_ENABLED: "false"
+      ZITADEL_DATABASE_POSTGRES_DSN: postgresql://zitadel:${ZITADEL_DB_PASSWORD:?}@db:5432/zitadel?sslmode=disable
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: PulpFy
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: admin
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD:?}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "true"
+      # Usuário de máquina IAM_OWNER só para o bootstrap por API (scripts/zitadel-bootstrap.sh); PAT curto,
+      # em volume que o login não monta. Revogar após o bootstrap.
+      ZITADEL_FIRSTINSTANCE_PATPATH: /zitadel/admin/admin.pat
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: bootstrap-admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: Bootstrap Admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "${ZITADEL_BOOTSTRAP_PAT_EXPIRATION:?}"
+      ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /zitadel/bootstrap/login-client.pat
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: Automatically Initialized IAM_LOGIN_CLIENT
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: https://${ZITADEL_DOMAIN}/ui/v2/login/
+      ZITADEL_OIDC_DEFAULTLOGINURLV2: https://${ZITADEL_DOMAIN}/ui/v2/login/login?authRequest=
+      ZITADEL_OIDC_DEFAULTLOGOUTURLV2: https://${ZITADEL_DOMAIN}/ui/v2/login/logout?post_logout_redirect=
+      ZITADEL_SAML_DEFAULTLOGINURLV2: https://${ZITADEL_DOMAIN}/ui/v2/login/login?samlRequest=
+      ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: "false"
+    healthcheck:
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 10s
+      timeout: 30s
+      retries: 12
+      start_period: 30s
+    volumes:
+      - zitadel-bootstrap:/zitadel/bootstrap:rw
+      - zitadel-admin:/zitadel/admin:rw
+    ports:
+      - "127.0.0.1:8140:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  zitadel-login:
+    image: ghcr.io/zitadel/zitadel-login:${ZITADEL_VERSION:?}
+    restart: unless-stopped
+    user: "0"
+    environment:
+      ZITADEL_API_URL: http://zitadel-api:8080
+      NEXT_PUBLIC_BASE_PATH: /ui/v2/login
+      ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
+      ZITADEL_SESSION_COOKIE_SECRET: ${LOGIN_SESSION_COOKIE_SECRET:?}
+      CUSTOM_REQUEST_HEADERS: Host:${ZITADEL_DOMAIN},X-Forwarded-Proto:https
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "node /app/healthcheck.mjs http://localhost:3000/ui/v2/login/healthy"]
+      interval: 10s
+      timeout: 30s
+      retries: 12
+      start_period: 20s
+    volumes:
+      - zitadel-bootstrap:/zitadel/bootstrap:ro
+    ports:
+      - "127.0.0.1:3141:3000"
+    depends_on:
+      zitadel-api:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  storage:
+  zitadel-bootstrap:
+  zitadel-admin:

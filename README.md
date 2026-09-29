@@ -4,7 +4,8 @@ Visita hospitalar e coordenação de equipes médicas: censo por serviço, evolu
 finalização imutável, tarefas com responsável e prazo, passagem de plantão (I-PASS) com aceite,
 pendências documentais e visão de coordenação. Multi-tenant (instituição → hospital → serviço).
 
-> **Estado:** fase 0 + núcleo da fase 1 (API, banco, worker e testes). Interface web em construção.
+> **Estado:** fase 0 + núcleo da fase 1: API, banco com RLS, worker, interface web e login real
+> (Zitadel + MFA) publicados em https://evolu-ia.pulpfy.com.
 > A demonstração em `evolu-ia.pulpfy.com` usa **exclusivamente dados sintéticos**. Não é um sistema
 > certificado, não tem assinatura digital qualificada e não deve receber dados reais de pacientes.
 
@@ -15,6 +16,7 @@ Decisões de arquitetura: [`docs/adr/`](docs/adr/). Backlog: [`docs/backlog.md`]
 
 ```
 apps/
+  web/               Next.js 16: Meu dia, episódio, nota, tarefas, passagens, pendências, coordenação, avisos, auditoria
   worker/            outbox → notificações; jobs (exportação de nota) com revalidação de vínculo
 packages/
   config/            env validado (zod), logger com redação, armazenamento privado de arquivos
@@ -23,6 +25,9 @@ packages/
   domain/            regras puras: nota estruturada, checagem de finalização, datas/timezone
   database/          migrations SQL (RLS), contexto por transação, seed sintético
   api/               API HTTP agnóstica de framework (Request → Response) + autenticação OIDC
+infra/nginx/         vhosts evolu-ia.pulpfy.com e auth.pulpfy.com (log sem query string)
+docker/postgres/     init: papéis evolu_* e banco/papel próprios do Zitadel
+scripts/             sync-vps, zitadel-bootstrap, backup
 tests/
   clinical/          fluxo completo censo → nota → finalizar → tarefa → passagem → worker
   security/          isolamento por tenant/serviço (API, SQL, arquivos, jobs) e matriz de papéis
@@ -31,7 +36,7 @@ tests/
 ## Requisitos
 
 - Node 22.12+ e pnpm 10 (`corepack enable`)
-- PostgreSQL 17 (via `docker compose up -d db`)
+- PostgreSQL 17 (via `docker compose up -d db`, publicado em 127.0.0.1:5442)
 
 ## Executar localmente
 
@@ -74,3 +79,23 @@ Ver [`docs/runbooks/`](docs/runbooks/): executar, migrar/reverter, backup/restau
   bloqueia a finalização até ser reconfirmado.
 - Logs, auditoria, outbox e notificações não carregam conteúdo clínico.
 - IA não está habilitada; quando houver, só propõe — o médico confirma.
+
+## Infraestrutura da demonstração
+
+Uma VPS com Docker Compose ([ADR 0008](docs/adr/0008-infra-vps-docker.md)): `db` (Postgres 17),
+`web` e `worker` (mesma imagem, somente leitura, sem capabilities), `zitadel-api` e
+`zitadel-login`. Tudo em 127.0.0.1; nginx + certbot na frente.
+
+| Domínio | Destino |
+|---|---|
+| `evolu-ia.pulpfy.com` | web (3140) |
+| `auth.pulpfy.com` | Zitadel API (8140) e login v2 (3141) |
+
+Login: conta criada por admin no Zitadel (sem auto-registro), senha + TOTP/chave de segurança
+obrigatórios. Em modo demo, a conta entra sem vínculo e pode operar **personas sintéticas**.
+Backup diário com restauração testada ([runbook](docs/runbooks/backup-restauracao.md)).
+
+**Limitações conhecidas** (aceitáveis só com dados sintéticos): VPS fora do Brasil; backups sem
+cifra e sem cópia externa; uploads sem antivírus; CSP com `unsafe-inline`; Zitadel no mesmo
+servidor Postgres; IA/voz/OCR sem provedor. Detalhes e dependências em
+[`docs/backlog.md`](docs/backlog.md).

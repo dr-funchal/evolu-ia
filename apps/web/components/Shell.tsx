@@ -127,6 +127,12 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="card narrow">
           <h1>Sem vínculo ativo</h1>
           <p>Sua conta está autenticada, mas ainda não tem vínculo com nenhuma instituição. Peça à administração do serviço.</p>
+          {me?.isDemoOperator && (
+            <div className="field">
+              <label>Demonstração: operar como persona sintética</label>
+              <PersonaPicker onChanged={() => location.assign("/")} />
+            </div>
+          )}
           <LogoutButton />
         </div>
       </main>

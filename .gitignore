@@ -9,3 +9,4 @@ coverage/
 /storage/
 /backups/
 .pnpm-store/
+*.tsbuildinfo
