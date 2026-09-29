@@ -25,7 +25,28 @@ O `bootstrap-admin` é **desativado** e o arquivo do PAT removido. Para rodar o 
 entrar no console (`https://auth.pulpfy.com/ui/console`) com um admin humano, reativar o usuário
 de máquina e gerar um PAT novo com validade curta; desativar de novo ao terminar.
 
+## Admin humano da instância
+
+Login no console com `admin@pulpfy.auth.pulpfy.com` (não só `admin`). Senha e segredo TOTP ficam
+em `/root/zitadel-admin-credenciais.txt` (0600, só na VPS). Use apenas para operar o IdP.
+
+## Usuário de serviço (convites)
+
+`evolu-ia-service` (máquina, papel `ORG_USER_MANAGER` na org PulpFy). O PAT fica no `.env` como
+`ZITADEL_SERVICE_PAT` (com `ZITADEL_ORG_ID`) e **expira em 2027-09-29** — gerar outro no console
+antes disso (Usuários → Contas de serviço → evolu-ia-service → Tokens), atualizar o `.env` e
+`docker compose up -d web`. A API usa o PAT para: buscar conta por e-mail, criar conta humana sem
+senha, listar métodos de autenticação (conta pendente = nenhum) e gerar código de convite.
+
+## Envio de convites por e-mail (SMTP)
+
+Sem SMTP o admin copia o link de convite na tela de Administração (`INVITE_DELIVERY=link`). Para
+o Zitadel enviar sozinho: no console, Configurações da instância → Provedor SMTP (ex.: Gmail com
+senha de app, ou um provedor transacional com domínio `pulpfy.com` e SPF/DKIM), ativar, testar;
+depois `INVITE_DELIVERY=email` no `.env` e `docker compose up -d web`.
+
 ## Usuários
 
-Contas são criadas por admin (não há auto-registro). Uma conta nova entra no app **sem nenhum
-vínculo**: em modo demo pode operar personas sintéticas; acesso a tenant real só por grant.
+Não há auto-registro: contas nascem de convite (tela de Administração) ou do console. Uma conta
+sem vínculo entra no app vendo "Sem vínculo ativo"; operadores da plataforma veem a tela de
+criação de equipe. Designar operador: `pnpm db:platform-admin https://auth.pulpfy.com <userId-zitadel> [e-mail] [nome]`.

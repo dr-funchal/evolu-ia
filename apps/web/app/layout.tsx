@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Evolu-IA",
-  description: "Visita hospitalar e coordenação de equipes (demonstração com dados sintéticos).",
+  description: "Visita hospitalar e coordenação de equipes médicas.",
   robots: { index: false, follow: false },
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };

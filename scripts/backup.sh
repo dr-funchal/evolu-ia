@@ -2,8 +2,8 @@
 # Backup do Evolu-IA na VPS: banco da aplicação, banco do Zitadel e arquivos privados.
 # Uso (na VPS, em /var/www/evolu-ia):  ./scripts/backup.sh [diretório]   (padrão /var/backups/evolu-ia)
 # Retenção: BACKUP_KEEP_DAYS (padrão 14). Arquivos 0600, diretório 0700.
-# ATENÇÃO: hoje só há dados sintéticos. Antes de qualquer dado real, os backups precisam ser
-# cifrados (age/gpg) e copiados para fora da VPS — ver docs/runbooks/backup-restauracao.md.
+# ATENÇÃO: desde 29/09/2026 há dados reais. Estes backups ainda NÃO são cifrados nem saem da VPS:
+# pendência P-01 (cifrar com age/gpg e copiar para fora) — ver docs/runbooks/backup-restauracao.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DEST=${1:-/var/backups/evolu-ia}

@@ -12,10 +12,10 @@ Status: ✅ feito e testado · 🟡 parcial · ⬜ não iniciado. "Teste" aponta
 | F0-04 | Migrations reversíveis | Cada migration tem `down`; CI sobe, desce tudo e sobe de novo | ✅ | CI |
 | F0-05 | OIDC + MFA | Code + PKCE; sessão sem `amr` de 2º fator → 401 `mfa_required`; sem senha própria | ✅ | testes de auth + E2E real em auth.pulpfy.com |
 | F0-06 | Provedores mock bloqueados | `AUTH_PROVIDER=mock`/`AI_PROVIDER=mock` recusados em demo/production | ✅ | `packages/config` |
-| F0-07 | Tenants/serviços sintéticos | 2 tenants, 3 hospitais, 5 serviços, 8 personas, flag `is_synthetic` | ✅ | seed + testes |
+| F0-07 | Tenants/serviços sintéticos | 2 tenants, 3 hospitais, 5 serviços, 8 personas, flag `is_synthetic` | ✅ | seed + testes; só local/test — produção sem dados sintéticos desde 29/09 |
 | F0-08 | Matriz de papéis | Matriz TS == `app.role_capabilities`; cada persona tem permitidos e negados | ✅ | `tests/security/role-matrix.test.ts` |
 | F0-09 | Auditoria | allow/deny/error com ator real e atuante, sem conteúdo clínico | ✅ | fluxo + isolamento |
-| F0-10 | Deploy demo | HTTPS, portas em loopback, containers endurecidos, faixa DEMO, login obrigatório | ✅ | evolu-ia.pulpfy.com |
+| F0-10 | Deploy demo | HTTPS, portas em loopback, containers endurecidos, faixa DEMO, login obrigatório | ✅ | evolu-ia.pulpfy.com; desde 29/09 em `APP_MODE=production` |
 | F0-11 | Backup/restauração | Dump diário app + zitadel + arquivos; restauração testada | 🟡 | sem cifra nem cópia externa |
 | F0-12 | Runbooks | Executar, migrar, backup/restauração, testes, Zitadel | ✅ | `docs/runbooks/` |
 
@@ -36,7 +36,7 @@ Status: ✅ feito e testado · 🟡 parcial · ⬜ não iniciado. "Teste" aponta
 | F1-11 | Exportação de nota | Job revalida vínculo; arquivo privado; download autorizado | 🟡 | cancelada fica `queued` |
 | F1-12 | Isolamento | API, SQL, arquivos e jobs entre tenants/serviços → 404/zero linhas | ✅ | `tests/security/` |
 | F1-13 | Responsividade | Uso em celular à beira-leito | 🟡 | cabeçalho quebra em telas estreitas |
-| F1-14 | Administração de vínculos na UI | Admin do tenant concede/revoga grants com validade | ⬜ | hoje só por seed/SQL |
+| F1-14 | Administração de vínculos na UI | Plataforma cria equipes; admin cadastra hospitais/serviços, convida por e-mail (Zitadel), concede/revoga papéis por escopo | ✅ | ADR 0011; validade de grant ainda só por SQL |
 
 ## Próximas fases (resumo)
 
@@ -45,4 +45,4 @@ Status: ✅ feito e testado · 🟡 parcial · ⬜ não iniciado. "Teste" aponta
 | F2-01 | Escala, plantões e financeiro (centavos, regras versionadas, competência fechada imutável) | F1-14 |
 | F2-02 | Protocolos clínicos (rascunho até aprovação médica) | revisão médica |
 | F3-01 | IA/voz/OCR como proposta revisável | contrato + DPA com provedor, hospedagem de dados |
-| P-01 | Pré-produção com dado real | hospedagem no Brasil ou base legal para transferência, backups cifrados/externos, antivírus, CSP sem `unsafe-inline`, Zitadel em banco separado, DPIA/RIPD |
+| P-01 | Pré-produção com dado real | **Em uso real desde 29/09 com riscos assumidos pelo responsável.** Pendentes: hospedagem no Brasil ou base legal para transferência, backups cifrados/externos, antivírus, CSP sem `unsafe-inline`, Zitadel em banco separado, DPIA/RIPD |

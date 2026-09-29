@@ -15,6 +15,7 @@
     "db:rollback": "tsx packages/database/src/cli.ts down",
     "db:status": "tsx packages/database/src/cli.ts status",
     "db:seed": "tsx scripts/seed.ts",
+    "db:platform-admin": "tsx packages/database/src/cli.ts platform-admin",
     "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "dependencies": {

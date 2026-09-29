@@ -197,3 +197,37 @@ export const AcknowledgeHandoff = z
   .refine((a) => a.decision !== "questioned" || a.questions, { message: "dúvidas exigem texto", path: ["questions"] });
 
 export const SetPersona = z.object({ userId: Uuid.nullable() });
+
+// ---------------------------------------------------------------------------------------------
+// Administração do tenant e da plataforma.
+// ---------------------------------------------------------------------------------------------
+export const ADMIN_ROLES = ["tenant_admin", "clinical_coordinator", "attending_physician", "resident", "secretary", "finance"] as const;
+const Email = z.string().trim().toLowerCase().pipe(z.email()).refine((e) => e.length <= 200, "e-mail longo demais");
+const PersonName = Text(200);
+
+export const UpdateTenant = z.object({ name: Text(200).optional(), timezone: IanaTz.optional() });
+export const CreateHospital = z.object({ name: Text(200), timezone: IanaTz });
+export const UpdateHospital = z.object({ name: Text(200).optional(), timezone: IanaTz.optional(), active: z.boolean().optional() });
+export const CreateService = z.object({ hospitalId: Uuid, name: Text(200), specialty: Text(120) });
+export const UpdateService = z.object({ name: Text(200).optional(), active: z.boolean().optional() });
+
+/** Escopo: tenant inteiro (sem hospital/serviço), hospital, ou serviço (com o hospital dele). */
+export const GrantInput = z
+  .object({ role: z.enum(ADMIN_ROLES), hospitalId: Uuid.nullable().optional(), serviceId: Uuid.nullable().optional() })
+  .refine((g) => !g.serviceId || g.hospitalId, { message: "serviço exige hospital", path: ["hospitalId"] })
+  .refine((g) => !(g.role === "tenant_admin" || g.role === "finance") || (!g.hospitalId && !g.serviceId), {
+    message: "administração e financeiro valem para a instituição inteira",
+    path: ["role"],
+  });
+export type GrantInput = z.infer<typeof GrantInput>;
+
+export const InviteMember = z.object({ email: Email, name: PersonName, grants: z.array(GrantInput).min(1).max(30) });
+export const AddGrant = GrantInput;
+export const UpdateMembership = z.object({ status: z.enum(["active", "suspended", "revoked"]) });
+
+export const CreateTenant = z.object({
+  name: Text(200),
+  timezone: IanaTz,
+  /** Primeiro administrador; ausente = o próprio operador da plataforma. */
+  admin: z.object({ email: Email, name: PersonName }).nullable().optional(),
+});

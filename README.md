@@ -4,10 +4,10 @@ Visita hospitalar e coordenação de equipes médicas: censo por serviço, evolu
 finalização imutável, tarefas com responsável e prazo, passagem de plantão (I-PASS) com aceite,
 pendências documentais e visão de coordenação. Multi-tenant (instituição → hospital → serviço).
 
-> **Estado:** fase 0 + núcleo da fase 1: API, banco com RLS, worker, interface web e login real
-> (Zitadel + MFA) publicados em https://evolu-ia.pulpfy.com.
-> A demonstração em `evolu-ia.pulpfy.com` usa **exclusivamente dados sintéticos**. Não é um sistema
-> certificado, não tem assinatura digital qualificada e não deve receber dados reais de pacientes.
+> **Estado:** em uso (`APP_MODE=production`) em https://evolu-ia.pulpfy.com, com login real
+> (Zitadel + MFA), administração de equipes e convites por e-mail. Sem dados de demonstração.
+> Não é um sistema certificado e não tem assinatura digital qualificada. Ver **Limitações** abaixo
+> antes de registrar dados de pacientes.
 
 Especificação completa: [`docs/ESPECIFICACAO_APP_VISITA_HOSPITALAR_CLAUDE_CODE.md`](docs/ESPECIFICACAO_APP_VISITA_HOSPITALAR_CLAUDE_CODE.md).
 Decisões de arquitetura: [`docs/adr/`](docs/adr/). Backlog: [`docs/backlog.md`](docs/backlog.md).
@@ -45,7 +45,7 @@ cp .env.example .env        # preencha as senhas; AUTH_PROVIDER=mock e APP_MODE=
 docker compose up -d db     # cria os papéis evolu_owner / evolu_app / evolu_worker
 pnpm install
 pnpm db:migrate             # aplica migrations com o papel dono
-pnpm db:seed                # 2 tenants, 3 hospitais, 5 serviços, 8 pessoas — tudo sintético
+pnpm db:seed                # só development/test/demo: 2 tenants, 8 pessoas — tudo sintético
 pnpm worker                 # processa outbox e jobs
 ```
 
@@ -80,7 +80,7 @@ Ver [`docs/runbooks/`](docs/runbooks/): executar, migrar/reverter, backup/restau
 - Logs, auditoria, outbox e notificações não carregam conteúdo clínico.
 - IA não está habilitada; quando houver, só propõe — o médico confirma.
 
-## Infraestrutura da demonstração
+## Infraestrutura em uso
 
 Uma VPS com Docker Compose ([ADR 0008](docs/adr/0008-infra-vps-docker.md)): `db` (Postgres 17),
 `web` e `worker` (mesma imagem, somente leitura, sem capabilities), `zitadel-api` e
@@ -91,11 +91,27 @@ Uma VPS com Docker Compose ([ADR 0008](docs/adr/0008-infra-vps-docker.md)): `db`
 | `evolu-ia.pulpfy.com` | web (3140) |
 | `auth.pulpfy.com` | Zitadel API (8140) e login v2 (3141) |
 
-Login: conta criada por admin no Zitadel (sem auto-registro), senha + TOTP/chave de segurança
-obrigatórios. Em modo demo, a conta entra sem vínculo e pode operar **personas sintéticas**.
-Backup diário com restauração testada ([runbook](docs/runbooks/backup-restauracao.md)).
+## Equipes, membros e convites ([ADR 0011](docs/adr/0011-administracao-convites-plataforma.md))
 
-**Limitações conhecidas** (aceitáveis só com dados sintéticos): VPS fora do Brasil; backups sem
-cifra e sem cópia externa; uploads sem antivírus; CSP com `unsafe-inline`; Zitadel no mesmo
-servidor Postgres; IA/voz/OCR sem provedor. Detalhes e dependências em
-[`docs/backlog.md`](docs/backlog.md).
+- **Plataforma** (`/plataforma`): operadores (`app.platform_admins`, designados por
+  `pnpm db:platform-admin <issuer> <subject> [e-mail] [nome]`) criam equipes (tenants) e
+  definem o primeiro administrador: eles mesmos ou outra pessoa convidada por e-mail.
+- **Administração** (`/admin`, papel `tenant_admin`): cadastra hospitais e serviços (desativar em
+  vez de apagar), convida membros com um ou mais papéis por escopo (equipe inteira, hospital ou
+  serviço), gera novo convite, suspende e revoga papéis. Não é possível revogar o último
+  administrador nem suspender o próprio vínculo. Administrar **não** dá acesso clínico: para
+  atender, o administrador atribui a si mesmo um papel clínico num serviço.
+- **Convite**: a API usa um usuário de serviço do Zitadel (`ZITADEL_SERVICE_PAT`,
+  `ORG_USER_MANAGER`) para achar ou criar a conta pelo e-mail e gerar o código de convite. O
+  vínculo fica preso à identidade (`issuer` + `subject`), nunca só ao e-mail. Com
+  `INVITE_DELIVERY=link` (padrão, sem SMTP) o administrador copia o link e envia; com
+  `INVITE_DELIVERY=email` o próprio Zitadel envia (exige SMTP configurado no Zitadel). O convidado
+  define senha e segundo fator e depois entra em `evolu-ia.pulpfy.com`.
+
+Sem auto-registro; senha + TOTP/chave de acesso obrigatórios. Backup diário com restauração
+testada ([runbook](docs/runbooks/backup-restauracao.md)).
+
+**Limitações** (riscos assumidos no uso com dados reais — LGPD): VPS fora do Brasil
+(transferência internacional); backups **sem cifra e sem cópia externa**; uploads sem antivírus;
+CSP com `unsafe-inline`; Zitadel no mesmo servidor Postgres; IA/voz/OCR sem provedor. Detalhes e
+dependências em [`docs/backlog.md`](docs/backlog.md).

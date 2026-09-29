@@ -46,6 +46,12 @@ export default function MeuDia() {
       <div className="card">
         <h1>Sem serviço vinculado</h1>
         <p className="muted">Seu vínculo nesta instituição não inclui acesso a um serviço clínico.</p>
+        {ctx.tenantCapabilities.includes("org.manage") && (
+          <p>
+            Como administrador, cadastre hospitais e serviços e atribua a si mesmo um papel clínico (por exemplo, médico assistente ou
+            coordenador) em <Link href="/admin">Administração</Link>.
+          </p>
+        )}
       </div>
     );
   if (error) return <div className="alert bad">{error}</div>;

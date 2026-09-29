@@ -19,8 +19,22 @@ try {
     for (const s of await migrationStatus(sql)) {
       console.log(`${s.applied ? "[x]" : "[ ]"} ${s.id}${s.checksumOk ? "" : "  ← CHECKSUM DIVERGENTE"}`);
     }
+  } else if (cmd === "platform-admin") {
+    // Operação de servidor (não é caminho de usuário): designa um operador da plataforma pela
+    // identidade do IdP. Uso: platform-admin <issuer> <subject> [e-mail] [nome]
+    const [issuer, subject, email, name] = process.argv.slice(3);
+    if (!issuer || !subject) throw new Error("uso: platform-admin <issuer> <subject> [e-mail] [nome]");
+    await sql.begin(async (tx) => {
+      let [u] = await tx<{ user_id: string }[]>`select user_id from app.user_identities where issuer = ${issuer} and subject = ${subject}`;
+      if (!u) {
+        [u] = await tx<{ user_id: string }[]>`insert into app.users (display_name, email) values (${name ?? "Operador"}, ${email ?? null}) returning id as user_id`;
+        await tx`insert into app.user_identities (user_id, issuer, subject) values (${u!.user_id}, ${issuer}, ${subject})`;
+      }
+      await tx`insert into app.platform_admins (user_id, note) values (${u!.user_id}, 'cli') on conflict do nothing`;
+      console.log(`operador da plataforma: ${u!.user_id}`);
+    });
   } else {
-    console.error(`comando desconhecido: ${cmd} (use up | down [n] | status)`);
+    console.error(`comando desconhecido: ${cmd} (use up | down [n] | status | platform-admin)`);
     process.exitCode = 2;
   }
 } catch (e) {

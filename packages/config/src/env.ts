@@ -23,6 +23,12 @@ const EnvSchema = z.object({
   STORAGE_DIR: z.string().default("./storage"),
   UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
   AI_PROVIDER: z.enum(["none", "mock"]).default("none"),
+  // Diretório de identidades (convites). Usuário de máquina com ORG_USER_MANAGER na organização.
+  ZITADEL_API_URL: z.string().url().optional(),
+  ZITADEL_SERVICE_PAT: z.string().min(20).optional(),
+  ZITADEL_ORG_ID: z.string().regex(/^\d{6,30}$/).optional(),
+  // link: o admin recebe o link de convite para enviar; email: o Zitadel envia (exige SMTP configurado nele).
+  INVITE_DELIVERY: z.enum(["link", "email"]).default("link"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -34,7 +40,9 @@ export class UnsafeConfigurationError extends Error {}
  * (especificação, seção 23.2: "mocks devem estar explicitamente rotulados e bloqueados em produção").
  */
 export function parseEnv(source: Record<string, string | undefined> = process.env): Env {
-  const env = EnvSchema.parse(source);
+  // Compose repassa variáveis ausentes como "" (${VAR:-}); vazio = não definido.
+  const clean = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== ""));
+  const env = EnvSchema.parse(clean);
   assertSafeForMode(env);
   return env;
 }

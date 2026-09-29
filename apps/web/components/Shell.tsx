@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, ApiFailure, setActiveTenant, storedTenant, storeTenant } from "@/lib/client";
+import { PlatformPanel } from "./PlatformPanel";
 
 export interface Service {
   id: string;
@@ -17,6 +18,7 @@ interface Me {
   user: { id: string; displayName: string };
   realUser: { id: string; displayName: string } | null;
   isDemoOperator: boolean;
+  isPlatformAdmin: boolean;
   appMode: string;
   demo: boolean;
   tenants: { id: string; name: string; timezone: string; isSynthetic: boolean; grants: { roleLabel: string; serviceName: string | null; hospitalName: string | null }[] }[];
@@ -53,6 +55,7 @@ const NAV = [
   { href: "/pendencias", label: "Pendências" },
   { href: "/coordenacao", label: "Coordenação", cap: "coordination.view" },
   { href: "/auditoria", label: "Auditoria", tenantCap: "audit.read" },
+  { href: "/admin", label: "Administração", tenantCap: "org.manage" },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -121,6 +124,19 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </main>
     );
+  if (state === "no-tenant" && me?.isPlatformAdmin)
+    return (
+      <main className="page">
+        <div className="row between">
+          <h1>Bem-vindo ao Evolu-IA</h1>
+          <LogoutButton />
+        </div>
+        <p className="muted">
+          Crie a sua equipe para começar. Depois, em Administração, cadastre hospitais e serviços e convide médicos e secretárias.
+        </p>
+        <PlatformPanel myTenantIds={[]} />
+      </main>
+    );
   if (state === "no-tenant")
     return (
       <main className="center">
@@ -167,6 +183,11 @@ export function Shell({ children }: { children: ReactNode }) {
           <Link href="/notificacoes" className={pathname === "/notificacoes" ? "active" : ""}>
             Avisos{ctx.unreadNotifications > 0 && <span className="count">{ctx.unreadNotifications}</span>}
           </Link>
+          {me.isPlatformAdmin && (
+            <Link href="/plataforma" className={pathname === "/plataforma" ? "active" : ""}>
+              Plataforma
+            </Link>
+          )}
         </nav>
         <div className="who">
           {me.tenants.length > 1 && (
@@ -247,9 +268,7 @@ function Landing() {
       <div className="card narrow">
         <h1>Evolu-IA</h1>
         <p>Visita hospitalar e coordenação de equipes: censo por serviço, evolução estruturada, tarefas e passagem de plantão.</p>
-        <p className="muted small">
-          Ambiente de demonstração com dados exclusivamente sintéticos. Acesso restrito a contas autorizadas, com segundo fator obrigatório.
-        </p>
+        <p className="muted small">Acesso restrito a contas convidadas pela equipe, com segundo fator obrigatório.</p>
         <a className="button primary" href="/auth/login">
           Entrar
         </a>

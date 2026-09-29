@@ -9,8 +9,8 @@ route(
   "GET",
   "/v1/me",
   async (ctx) => {
-    const scopes = await userTx(ctx, (tx) =>
-      tx<{
+    const [scopes, isPlatformAdmin] = await userTx(ctx, async (tx) => {
+      const rows = await tx<{
         tenant_id: string;
         tenant_name: string;
         tenant_timezone: string;
@@ -19,8 +19,10 @@ route(
         hospital_name: string | null;
         service_id: string | null;
         service_name: string | null;
-      }[]>`select * from app.my_scopes()`,
-    );
+      }[]>`select * from app.my_scopes()`;
+      const [p] = await tx<{ ok: boolean }[]>`select app.is_platform_admin() as ok`;
+      return [rows, Boolean(p?.ok)] as const;
+    });
     const tenants = new Map<string, { id: string; name: string; timezone: string; isSynthetic: boolean; grants: unknown[] }>();
     for (const s of scopes) {
       const t =
@@ -40,6 +42,7 @@ route(
       user: { id: ctx.session.userId, displayName: ctx.session.displayName },
       realUser: ctx.session.personaActive ? { id: ctx.session.realUserId, displayName: ctx.session.realDisplayName } : null,
       isDemoOperator: ctx.session.isDemoOperator && demoFeaturesEnabled(),
+      isPlatformAdmin,
       appMode: e.APP_MODE,
       demo: e.APP_MODE === "demo" || e.APP_MODE === "development",
       aiProvider: e.AI_PROVIDER,
