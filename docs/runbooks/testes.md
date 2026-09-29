@@ -20,6 +20,7 @@ das URLs dos papéis `evolu_owner`/`evolu_app`/`evolu_worker`. Os testes usam `e
 | `tests/security/escala.test.ts` | montar ≠ publicar, rascunho invisível, exceções só em ocorrência real, divisão da série, outro tenant |
 | `tests/security/modulos.test.ts` | Passagens opcional: padrão desligado, só admin alterna, capacidade some e volta |
 | `tests/security/ia.test.ts` | IA por equipe contra OpenRouter falso local: só admin, chave validada/cifrada/nunca devolvida, RLS de config e consumo, filtro de retenção zero, consumo sem conteúdo |
+| `tests/security/ia-recursos.test.ts` | Recursos clínicos de IA (ADR 0014) contra o OpenRouter falso de `tests/helpers/fake-openrouter.ts`: ditado/conversa (autorização, formato, só o autor, áudio não guardado), OCR proposto → confirmado com If-Match e imutável no banco, modelo sem visão, tarefas da IA só como proposta (gatilho) e limite de 5, relatório (autor, emissão com `note.finalize`, hash, imutável), resumo só para coordenação e sem nome de paciente enviado |
 
 E2E no navegador (manual, não está no CI): Playwright em container contra a demo — login real no
 Zitadel com TOTP, troca de persona, nota finalizada. Use sempre um usuário de teste descartável,

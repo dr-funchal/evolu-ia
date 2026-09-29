@@ -16,7 +16,7 @@ export class AiError extends Error {
   }
 }
 
-async function call(path: string, init: RequestInit & { key?: string } = {}): Promise<unknown> {
+async function call(path: string, init: RequestInit & { key?: string; timeoutMs?: number } = {}): Promise<unknown> {
   const headers = new Headers(init.headers);
   if (init.key) headers.set("authorization", `Bearer ${init.key}`);
   headers.set("http-referer", env().APP_BASE_URL);
@@ -24,7 +24,7 @@ async function call(path: string, init: RequestInit & { key?: string } = {}): Pr
   if (init.body) headers.set("content-type", "application/json");
   let res: Response;
   try {
-    res = await fetch(`${env().OPENROUTER_BASE_URL}${path}`, { ...init, headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    res = await fetch(`${env().OPENROUTER_BASE_URL}${path}`, { ...init, headers, signal: AbortSignal.timeout(init.timeoutMs ?? TIMEOUT_MS) });
   } catch (e) {
     if ((e as Error).name === "TimeoutError") throw new AiError("timeout", "O OpenRouter não respondeu a tempo.");
     throw new AiError("provider_error", "Não foi possível falar com o OpenRouter.");
@@ -127,7 +127,12 @@ export async function checkKey(key: string): Promise<KeyInfo> {
 
 // --- Chat ----------------------------------------------------------------------------------------
 
-export type ChatContent = string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[];
+export type ChatPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "input_audio"; input_audio: { data: string; format: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
+export type ChatContent = string | ChatPart[];
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: ChatContent;
@@ -147,6 +152,7 @@ export async function chat(opts: {
   zeroRetention: boolean;
   maxTokens?: number;
   json?: boolean;
+  timeoutMs?: number;
 }): Promise<ChatResult> {
   const body: Record<string, unknown> = {
     model: opts.model,
@@ -156,7 +162,7 @@ export async function chat(opts: {
   };
   if (opts.zeroRetention) body.provider = { zdr: true, data_collection: "deny" };
   if (opts.json) body.response_format = { type: "json_object" };
-  const r = (await call("/chat/completions", { method: "POST", key: opts.key, body: JSON.stringify(body) })) as {
+  const r = (await call("/chat/completions", { method: "POST", key: opts.key, body: JSON.stringify(body), timeoutMs: opts.timeoutMs })) as {
     model?: string;
     choices?: { message?: { content?: string | null } }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
@@ -170,4 +176,32 @@ export async function chat(opts: {
     outputTokens: r.usage?.completion_tokens ?? null,
     costUsd: r.usage?.cost ?? null,
   };
+}
+
+// --- Transcrição ---------------------------------------------------------------------------------
+
+export interface TranscriptionResult {
+  text: string;
+  seconds: number | null;
+  costUsd: number | null;
+}
+
+/**
+ * POST /audio/transcriptions com o áudio em base64. O áudio não é guardado em lugar nenhum: sai da
+ * memória para o provedor e é descartado. Esse endpoint ainda não aceita o filtro de retenção zero.
+ */
+export async function transcribe(opts: { key: string; model: string; audio: Uint8Array; format: string }): Promise<TranscriptionResult> {
+  const r = (await call("/audio/transcriptions", {
+    method: "POST",
+    key: opts.key,
+    timeoutMs: 90_000,
+    body: JSON.stringify({
+      model: opts.model,
+      input_audio: { data: Buffer.from(opts.audio).toString("base64"), format: opts.format },
+      language: "pt",
+      temperature: 0,
+    }),
+  })) as { text?: string; usage?: { seconds?: number; cost?: number } };
+  if (typeof r.text !== "string") throw new AiError("provider_error", "A transcrição não devolveu texto.");
+  return { text: r.text, seconds: r.usage?.seconds ?? null, costUsd: r.usage?.cost ?? null };
 }

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { NOTE_SECTIONS, type NoteContent, type NoteField } from "@evolu/contracts";
 import { FIELD_STATE_LABELS, SECTION_LABELS } from "@evolu/domain";
+import { AiReview, FindingsPanel, ScribePanel } from "@/components/AiNote";
 import { useShell } from "@/components/Shell";
 import { api, ApiFailure, newKey } from "@/lib/client";
 import { CERTAINTY, fmtDateTime, fromLocalInput, label, toLocalInput } from "@/lib/format";
@@ -123,6 +124,20 @@ export default function NotePage() {
     }
   }
 
+  const aiOn = ctx.tenant.modules.ai && editable;
+  /** Aplica texto proposto pela IA acrescentando ao que já existe na seção (nunca substitui). */
+  const appendToSection = (s: (typeof NOTE_SECTIONS)[number], text: string) => {
+    const cur = content.sections[s];
+    const prev = cur.state === "informado" ? (cur.text ?? "").trim() : "";
+    setSection(s, { state: "informado", text: prev ? `${prev}\n${text}` : text });
+  };
+  const addProblem = async (description: string, certainty: string) => {
+    const r = await api<{ id: string }>("POST", `/v1/episodes/${note.episodeId}/problems`, { body: { description, certainty } });
+    setNote({ ...note, problems: [...note.problems, { id: r.id, description, certainty, status: "ativo" }] });
+    setContent({ ...content, problems: [...content.problems, { problemId: r.id, avaliacao: { state: "nao_informado" }, plano: { state: "nao_informado" } }] });
+    setDirty(true);
+  };
+
   const problemName = (pid: string) => note.problems.find((p) => p.id === pid);
   const missingProblems = note.problems.filter((p) => p.status !== "resolvido" && !content.problems.some((x) => x.problemId === p.id));
 
@@ -155,6 +170,9 @@ export default function NotePage() {
           </div>
         )}
       </div>
+
+      {aiOn && <ScribePanel noteId={note.id} onApply={appendToSection} onAddProblem={addProblem} />}
+      {aiOn && <FindingsPanel episodeId={note.episodeId} onApply={appendToSection} />}
 
       <div className="card">
         {NOTE_SECTIONS.map((s) => (
@@ -222,6 +240,7 @@ export default function NotePage() {
             </div>
           )}
           <p className="muted small">A checagem é determinística (completude e estados explícitos). Ela não interpreta o conteúdo clínico.</p>
+          {aiOn && <AiReview noteId={note.id} save={save} dirty={dirty} />}
         </div>
       )}
 

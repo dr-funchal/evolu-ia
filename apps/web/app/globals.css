@@ -119,3 +119,10 @@ th { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
   .top { position: static; }
   .who select { max-width: 100%; }
 }
+.button.disabled { opacity: 0.5; pointer-events: none; }
+@media print {
+  .top, .no-print, .demo-banner { display: none !important; }
+  body { background: #fff; color: #000; }
+  .card { border: none; box-shadow: none; padding: 0; }
+  .print-body { white-space: pre-wrap; font: 12pt/1.5 Georgia, serif; }
+}

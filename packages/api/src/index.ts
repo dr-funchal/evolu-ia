@@ -15,3 +15,4 @@ export { handleAuth } from "./auth";
 export { appSql, closeAppSql } from "./context";
 export { createSession, hashToken, cookieName, type Session } from "./session";
 export { sniffMime } from "./routes/documents";
+import "./routes/ai-clinical";

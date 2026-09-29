@@ -97,6 +97,8 @@ describe("IA por equipe (OpenRouter)", () => {
   });
 
   it("salva cifrada: o banco e a API nunca devolvem a chave", async () => {
+    const keySets = async () => (await owner<{ n: number }[]>`select count(*)::int n from app.audit_events where action = 'admin.ai.key.set' and tenant_id = ${FX.tenantA}`)[0]!.n;
+    const before = await keySets();
     expect((await call(P.gabriela!, "PUT", "/v1/admin/ai", { body: { apiKey: VALID, model: "acme/texto-1", transcriptionModel: "acme/whisper" } })).status).toBe(200);
     const g = await call(P.gabriela!, "GET", "/v1/admin/ai");
     expect(g.data).toMatchObject({ platformEnabled: true, enabled: false, hasKey: true, keyHint: "abcd", model: "acme/texto-1", zeroRetention: true });
@@ -106,8 +108,7 @@ describe("IA por equipe (OpenRouter)", () => {
     expect(openSecret(row!.api_key_enc, FX.tenantA)).toBe(VALID);
     // O texto cifrado está preso à equipe: em outro tenant não abre.
     expect(() => openSecret(row!.api_key_enc, FX.tenantB)).toThrow();
-    const [a] = await owner<{ n: number }[]>`select count(*)::int n from app.audit_events where action = 'admin.ai.key.set' and tenant_id = ${FX.tenantA}`;
-    expect(a!.n).toBe(1);
+    expect(await keySets()).toBe(before + 1);
     // Desabilitada: não aparece para a equipe.
     expect((await call(P.ana!, "GET", "/v1/context")).data.tenant.modules.ai).toBe(false);
   });

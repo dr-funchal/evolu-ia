@@ -1,0 +1,11 @@
+drop trigger tasks_ia_insert_guard on app.tasks;
+drop function app.tasks_ia_insert_guard();
+alter table app.tasks disable trigger tasks_guard;
+update app.tasks set source = 'proposta' where source = 'ia';
+alter table app.tasks enable trigger tasks_guard;
+alter table app.tasks drop constraint tasks_source_check;
+alter table app.tasks add constraint tasks_source_check check (source in ('manual', 'nota', 'passagem', 'proposta'));
+drop table app.encounter_reports;
+drop function app.encounter_reports_guard();
+drop table app.document_extractions;
+drop function app.document_extractions_guard();

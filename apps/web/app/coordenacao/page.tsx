@@ -70,6 +70,7 @@ export default function Coordenacao() {
     <>
       <h1>Coordenação — {service.name}</h1>
       <p className="muted small">Exceções do dia {data.day.split("-").reverse().join("/")}. Mostra só o que foge do esperado.</p>
+      {ctx.tenant.modules.ai && <AiBrief serviceId={service.id} />}
       <div className="grid2">
         <Block title="Solicitações atrasadas" count={data.overdueRequests.length}>
           <ul className="small">
@@ -119,5 +120,56 @@ export default function Coordenacao() {
         </Block>
       </div>
     </>
+  );
+}
+
+/** Resumo por IA sob demanda: só pontos de atenção. Pacientes vão anonimizados para a IA. */
+function AiBrief({ serviceId }: { serviceId: string }) {
+  const [data, setData] = useState<{ atencao: { episodeId: string; patientName: string; location: string | null; texto: string }[]; geral: string[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setData(null), [serviceId]);
+  return (
+    <div className="card">
+      <div className="row between">
+        <h2 style={{ margin: 0 }}>Resumo de atenção (IA)</h2>
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              setData(await api("POST", `/v1/ai/services/${serviceId}/brief`, { body: {} }));
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Resumindo…" : data ? "Atualizar" : "Gerar resumo"}
+        </button>
+      </div>
+      {error && <div className="alert bad">{error}</div>}
+      {data && (
+        <>
+          {data.atencao.length === 0 && data.geral.length === 0 && <p className="alert ok small">Nada exige atenção agora.</p>}
+          <ul className="small">
+            {data.atencao.map((a) => (
+              <li key={a.episodeId + a.texto}>
+                <Link href={`/episodios/${a.episodeId}`}>{a.patientName}</Link>
+                {a.location && <span className="muted"> ({a.location})</span>}: {a.texto}
+              </li>
+            ))}
+          </ul>
+          {data.geral.map((g, i) => (
+            <p key={i} className="small muted">
+              {g}
+            </p>
+          ))}
+          <p className="muted small">Gerado pela IA a partir do censo; confira no paciente antes de agir.</p>
+        </>
+      )}
+    </div>
   );
 }

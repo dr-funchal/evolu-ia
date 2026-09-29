@@ -123,6 +123,20 @@ tem teste de conexão, mostra o saldo e o consumo do mês por recurso (sem conte
 liga com `AI_PROVIDER=openrouter` + `AI_SECRETS_KEY` no `.env`. Tudo que a IA gera é proposta
 que o médico revisa ([ADR 0010](docs/adr/0010-ia-somente-proposta.md)).
 
+Recursos com a IA ligada ([ADR 0014](docs/adr/0014-ia-recursos-clinicos.md)):
+
+- **Ditado / conversa na evolução:** grava (até 10 min) ou envia áudio; vira notas clínicas de
+  leitura rápida (pontos, antecedentes, exames, pendências e condutas, hipóteses). O médico
+  aplica cada bloco na seção que quiser. Conversa só com autorização verbal do paciente marcada.
+  O áudio não é guardado.
+- **Foto/PDF de exame:** a IA lê, classifica e sugere onde guardar; o médico confirma ou descarta.
+  Achados confirmados podem ser inseridos na evolução com a data do exame.
+- **Relatório da internação** (paciente ou cobrança): rascunho da IA, o autor revisa e emite;
+  depois imprime/salva PDF ou abre no próprio e-mail.
+- **Tarefas sugeridas:** entram como "sugestão da IA" e só valem depois de aprovadas.
+- **Resumo da coordenação:** só pontos de atenção do serviço.
+- **Revisão antes de finalizar:** aponta inconsistências no rascunho.
+
 ## Escala ([ADR 0012](docs/adr/0012-escala.md))
 
 `/escala`: turnos de **visita, retaguarda ou plantão** por serviço, em séries que se repetem

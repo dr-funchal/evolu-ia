@@ -288,3 +288,24 @@ export const ScheduleException = z
     reason: z.string().trim().max(300).nullable().optional(),
   })
   .refine((e) => (e.kind === "reassigned") === Boolean(e.assigneeUserId), { message: "troca exige profissional", path: ["assigneeUserId"] });
+
+// ---------------------------------------------------------------------------------------------
+// Recursos de IA (ADR 0014). Tudo o que a IA produz é proposta: o médico revisa e confirma.
+// ---------------------------------------------------------------------------------------------
+export const SCRIBE_MODES = ["ditado", "conversa"] as const;
+export const StructureTranscript = z.object({ transcript: Text(60000), mode: z.enum(SCRIBE_MODES).default("ditado") });
+
+export const EXTRACTION_CATEGORIES = ["laboratorio", "imagem", "laudo", "medicacoes", "relatorio_externo", "outro"] as const;
+export const EXTRACTION_TARGETS = ["resultados_revistos", "antecedentes", "contexto", "nenhum"] as const;
+export const ReviewExtraction = z.object({
+  action: z.enum(["confirm", "discard"]),
+  title: Text(200).optional(),
+  summary: Text(8000).optional(),
+  category: z.enum(EXTRACTION_CATEGORIES).optional(),
+  target: z.enum(EXTRACTION_TARGETS).optional(),
+  examDate: z.iso.date().nullable().optional(),
+});
+
+export const REPORT_PURPOSES = ["paciente", "cobranca"] as const;
+export const CreateReport = z.object({ purpose: z.enum(REPORT_PURPOSES) });
+export const UpdateReport = z.object({ body: Text(40000) });

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { OcrPanel, ReportsPanel, SuggestTasksButton } from "@/components/AiEpisode";
+import { useShell } from "@/components/Shell";
 import { TaskForm, TaskList, useTeam, type TaskRowData } from "@/components/Tasks";
 import { api } from "@/lib/client";
 import { ageFrom, CERTAINTY, fmtDate, fmtDateTime, label, PRIORITY } from "@/lib/format";
@@ -50,6 +52,8 @@ export default function EpisodePage() {
   }, [id]);
   useEffect(load, [load]);
   const team = useTeam(ep?.serviceId);
+  const { ctx } = useShell();
+  const aiOn = ctx.tenant.modules.ai;
 
   if (error) return <div className="alert bad">{error}</div>;
   if (!ep) return <p className="muted">Carregando…</p>;
@@ -233,13 +237,21 @@ export default function EpisodePage() {
             </ul>
           </div>
 
+          {aiOn && (
+            <OcrPanel episodeId={id} timezone={ep.timezone} canWrite={Boolean(caps["clinical.write"] && caps["document.upload"])} onChanged={load} />
+          )}
+
           <div className="card">
-            <h2 style={{ marginTop: 0 }}>Tarefas</h2>
+            <div className="row between">
+              <h2 style={{ marginTop: 0 }}>Tarefas</h2>
+              {aiOn && caps["clinical.write"] && ["active", "accepted"].includes(ep.status) && <SuggestTasksButton episodeId={id} onDone={load} />}
+            </div>
             <TaskList tasks={c.tasks} timezone={ep.timezone} canEdit={Boolean(caps["clinical.write"])} onChanged={load} />
           </div>
           {caps["clinical.write"] && (
             <TaskForm episodeId={id} serviceId={ep.serviceId} timezone={ep.timezone} problems={c.problems.filter((p) => p.status !== "resolvido")} onCreated={load} />
           )}
+          {aiOn && <ReportsPanel episodeId={id} timezone={ep.timezone} canWrite={Boolean(caps["clinical.write"])} />}
         </>
       ) : (
         <div className="alert warn">Seu papel neste serviço não inclui leitura clínica.</div>

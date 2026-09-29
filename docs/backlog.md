@@ -44,5 +44,5 @@ Status: ✅ feito e testado · 🟡 parcial · ⬜ não iniciado. "Teste" aponta
 |---|---|---|
 | F2-01 | Escala, plantões e financeiro (centavos, regras versionadas, competência fechada imutável) — **escala feita (ADR 0012)**; financeiro pendente | F1-14 |
 | F2-02 | Protocolos clínicos (rascunho até aprovação médica) | revisão médica |
-| F3-01 | IA/voz/OCR como proposta revisável — **base pronta (ADR 0013)**: chave OpenRouter + modelo por equipe, consumo; recursos entram um a um sobre `runChat()` | — |
+| F3-01 | IA/voz/OCR como proposta revisável — **base (ADR 0013) e recursos 1, 2, 3, 6, 8, 9, 10 feitos (ADR 0014)**: ditado/escriba em notas clínicas, OCR com confirmação, relatório da internação, tarefas sugeridas, resumo da coordenação, revisão. Pendentes: envio de relatório por SMTP, transcrição com retenção zero quando o OpenRouter aceitar | — |
 | P-01 | Pré-produção com dado real | **Em uso real desde 29/09 com riscos assumidos pelo responsável.** Pendentes: hospedagem no Brasil ou base legal para transferência, backups cifrados/externos, antivírus, CSP sem `unsafe-inline`, Zitadel em banco separado, DPIA/RIPD |

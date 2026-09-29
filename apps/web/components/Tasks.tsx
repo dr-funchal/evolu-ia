@@ -20,6 +20,7 @@ export interface TaskRowData {
   patient_name?: string;
   service_episode_id?: string;
   overdue?: boolean;
+  source?: string;
 }
 
 export const TASK_TYPES: Record<string, string> = {
@@ -155,10 +156,10 @@ export function TaskList({ tasks, timezone, canEdit, onChanged, showPatient }: {
   showPatient?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
-  async function change(t: TaskRowData, status: string) {
+  async function change(t: TaskRowData, status: string, reason?: string) {
     setError(null);
-    let statusReason: string | undefined;
-    if (status === "blocked" || status === "cancelled") {
+    let statusReason: string | undefined = reason;
+    if (!reason && (status === "blocked" || status === "cancelled")) {
       statusReason = prompt(status === "blocked" ? "Motivo do bloqueio:" : "Motivo do cancelamento:") ?? undefined;
       if (!statusReason) return;
     }
@@ -207,10 +208,27 @@ export function TaskList({ tasks, timezone, canEdit, onChanged, showPatient }: {
                   {late && <span className="badge bad"> atrasada</span>}
                 </td>
                 <td>
-                  <span className={`badge ${t.status === "done" ? "ok" : t.status === "blocked" ? "bad" : "plain"}`}>{label(t.status)}</span>
+                  {t.status === "proposed" && t.source === "ia" ? (
+                    <span className="badge warn">sugestão da IA</span>
+                  ) : (
+                    <span className={`badge ${t.status === "done" ? "ok" : t.status === "blocked" ? "bad" : "plain"}`}>{label(t.status)}</span>
+                  )}
                 </td>
                 {canEdit && (
                   <td>
+                    {t.status === "proposed" && (
+                      <span className="row">
+                        <button className="primary" onClick={() => void change(t, "open")}>
+                          Aprovar
+                        </button>
+                        <button
+                          className="link small"
+                          onClick={() => void change(t, "cancelled", t.source === "ia" ? "Sugestão da IA descartada" : undefined)}
+                        >
+                          Descartar
+                        </button>
+                      </span>
+                    )}
                     {open && (
                       <select aria-label="Alterar situação" value="" onChange={(e) => e.target.value && void change(t, e.target.value)}>
                         <option value="">alterar…</option>
