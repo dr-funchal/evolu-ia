@@ -47,10 +47,18 @@ export default function MeuDia() {
         <h1>Sem serviço vinculado</h1>
         <p className="muted">Seu vínculo nesta instituição não inclui acesso a um serviço clínico.</p>
         {ctx.tenantCapabilities.includes("org.manage") && (
-          <p>
-            Como administrador, cadastre hospitais e serviços e atribua a si mesmo um papel clínico (por exemplo, médico assistente ou
-            coordenador) em <Link href="/admin">Administração</Link>.
-          </p>
+          <>
+            <p>Como administrador, falta só a estrutura:</p>
+            <ol>
+              <li>cadastre o hospital e o serviço (ex.: “Visita”, “Interconsulta”);</li>
+              <li>garanta que você tem um papel clínico que cubra o serviço — médico assistente ou coordenador clínico na “equipe inteira” já vale para todos.</li>
+            </ol>
+            <p>
+              <Link href="/admin" className="button primary">
+                Configurar em Administração
+              </Link>
+            </p>
+          </>
         )}
       </div>
     );

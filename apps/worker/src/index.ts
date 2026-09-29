@@ -28,6 +28,8 @@ const NOTIFY: Record<string, { to: string; cap: string; text: string; link: (r: 
     text: "Você recebeu uma passagem de caso.",
     link: (r) => `/passagens/${r.aggregate_id}`,
   },
+  "schedule.published": { to: "assigneeUserId", cap: "patient.basic.read", text: "Uma escala com você foi publicada.", link: () => "/escala" },
+  "schedule.changed": { to: "assigneeUserId", cap: "patient.basic.read", text: "Houve mudança numa escala sua.", link: () => "/escala" },
   "handoff.acknowledged": {
     to: "senderId",
     cap: "handoff.participate",

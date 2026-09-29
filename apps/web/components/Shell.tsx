@@ -52,6 +52,7 @@ const NAV = [
   { href: "/", label: "Meu dia" },
   { href: "/tarefas", label: "Tarefas" },
   { href: "/passagens", label: "Passagens" },
+  { href: "/escala", label: "Escala" },
   { href: "/pendencias", label: "Pendências" },
   { href: "/coordenacao", label: "Coordenação", cap: "coordination.view" },
   { href: "/auditoria", label: "Auditoria", tenantCap: "audit.read" },

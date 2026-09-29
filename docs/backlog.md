@@ -42,7 +42,7 @@ Status: ✅ feito e testado · 🟡 parcial · ⬜ não iniciado. "Teste" aponta
 
 | ID | Item | Dependência |
 |---|---|---|
-| F2-01 | Escala, plantões e financeiro (centavos, regras versionadas, competência fechada imutável) | F1-14 |
+| F2-01 | Escala, plantões e financeiro (centavos, regras versionadas, competência fechada imutável) — **escala feita (ADR 0012)**; financeiro pendente | F1-14 |
 | F2-02 | Protocolos clínicos (rascunho até aprovação médica) | revisão médica |
 | F3-01 | IA/voz/OCR como proposta revisável | contrato + DPA com provedor, hospedagem de dados |
 | P-01 | Pré-produção com dado real | **Em uso real desde 29/09 com riscos assumidos pelo responsável.** Pendentes: hospedagem no Brasil ou base legal para transferência, backups cifrados/externos, antivírus, CSP sem `unsafe-inline`, Zitadel em banco separado, DPIA/RIPD |

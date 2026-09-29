@@ -231,3 +231,50 @@ export const CreateTenant = z.object({
   /** Primeiro administrador; ausente = o próprio operador da plataforma. */
   admin: z.object({ email: Email, name: PersonName }).nullable().optional(),
 });
+
+// ---------------------------------------------------------------------------------------------
+// Escala. Datas e horas são locais (fuso do hospital); a RRULE é montada no servidor.
+// ---------------------------------------------------------------------------------------------
+export const MODALITIES = ["visita", "retaguarda", "plantao"] as const;
+const LocalDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "data AAAA-MM-DD");
+const LocalTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "hora HH:MM");
+const LocalDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/, "AAAA-MM-DDTHH:MM");
+
+export const Repeat = z.discriminatedUnion("freq", [
+  z.object({ freq: z.literal("none") }),
+  z.object({ freq: z.literal("daily"), interval: z.number().int().min(1).max(30) }),
+  z.object({
+    freq: z.literal("weekly"),
+    interval: z.number().int().min(1).max(8),
+    byDay: z.array(z.enum(["MO", "TU", "WE", "TH", "FR", "SA", "SU"])).min(1).max(7),
+  }),
+]);
+export type Repeat = z.infer<typeof Repeat>;
+
+export const ScheduleSeriesInput = z
+  .object({
+    serviceId: Uuid,
+    modality: z.enum(MODALITIES),
+    assigneeUserId: Uuid,
+    startDate: LocalDate,
+    startTime: LocalTime,
+    durationMinutes: z.number().int().min(15).max(2880),
+    repeat: Repeat,
+    untilDate: LocalDate.nullable().optional(),
+    notes: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((s) => !s.untilDate || s.untilDate >= s.startDate, { message: "término antes do início", path: ["untilDate"] });
+export type ScheduleSeriesInput = z.infer<typeof ScheduleSeriesInput>;
+
+/** "Esta e as próximas": a série original termina na véspera de `fromDate`; a nova começa nela. */
+export const SplitSeries = z.object({ fromDate: LocalDate, changes: ScheduleSeriesInput });
+export const EndSeries = z.object({ lastDate: LocalDate });
+
+export const ScheduleException = z
+  .object({
+    originalStart: LocalDateTime,
+    kind: z.enum(["cancelled", "reassigned", "none"]),
+    assigneeUserId: Uuid.nullable().optional(),
+    reason: z.string().trim().max(300).nullable().optional(),
+  })
+  .refine((e) => (e.kind === "reassigned") === Boolean(e.assigneeUserId), { message: "troca exige profissional", path: ["assigneeUserId"] });

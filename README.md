@@ -2,7 +2,7 @@
 
 Visita hospitalar e coordenação de equipes médicas: censo por serviço, evolução estruturada com
 finalização imutável, tarefas com responsável e prazo, passagem de plantão (I-PASS) com aceite,
-pendências documentais e visão de coordenação. Multi-tenant (instituição → hospital → serviço).
+pendências documentais, escala de visita/plantão e visão de coordenação. Multi-tenant (instituição → hospital → serviço).
 
 > **Estado:** em uso (`APP_MODE=production`) em https://evolu-ia.pulpfy.com, com login real
 > (Zitadel + MFA), administração de equipes e convites por e-mail. Sem dados de demonstração.
@@ -107,6 +107,15 @@ Uma VPS com Docker Compose ([ADR 0008](docs/adr/0008-infra-vps-docker.md)): `db`
   `INVITE_DELIVERY=link` (padrão, sem SMTP) o administrador copia o link e envia; com
   `INVITE_DELIVERY=email` o próprio Zitadel envia (exige SMTP configurado no Zitadel). O convidado
   define senha e segundo fator e depois entra em `evolu-ia.pulpfy.com`.
+
+## Escala ([ADR 0012](docs/adr/0012-escala.md))
+
+`/escala`: turnos de **visita, retaguarda ou plantão** por serviço, em séries que se repetem
+(diária ou semanal, a cada N semanas, dias escolhidos, até uma data) ou avulsos, no fuso do
+hospital. Coordenador, secretária e admin **montam** (rascunho); coordenador e admin **publicam**.
+Publicado, todo membro da equipe vê; o escalado recebe aviso. Por turno: trocar profissional ou
+cancelar só aquele; por série: editar inteira, alterar "deste turno em diante", encerrar ou
+cancelar. Sobreposição da mesma pessoa aparece como conflito. Filtro "só a minha escala".
 
 Sem auto-registro; senha + TOTP/chave de acesso obrigatórios. Backup diário com restauração
 testada ([runbook](docs/runbooks/backup-restauracao.md)).

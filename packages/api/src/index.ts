@@ -7,6 +7,7 @@ import "./routes/handoffs";
 import "./routes/documents";
 import "./routes/coordination";
 import "./routes/admin";
+import "./routes/schedule";
 
 export { handleApi } from "./router";
 export { handleAuth } from "./auth";
