@@ -206,6 +206,16 @@ const Email = z.string().trim().toLowerCase().pipe(z.email()).refine((e) => e.le
 const PersonName = Text(200);
 
 export const UpdateTenant = z.object({ name: Text(200).optional(), timezone: IanaTz.optional(), handoffsEnabled: z.boolean().optional() });
+
+/** IA da equipe (OpenRouter). apiKey: string grava/troca; null remove; ausente mantém. */
+const ModelId = z.string().regex(/^[A-Za-z0-9._:/-]{3,120}$/, "modelo inválido");
+export const UpdateAiSettings = z.object({
+  apiKey: z.string().trim().min(20).max(300).regex(/^\S+$/, "chave inválida").nullable().optional(),
+  model: ModelId.optional(),
+  transcriptionModel: ModelId.nullable().optional(),
+  zeroRetention: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
 export const CreateHospital = z.object({ name: Text(200), timezone: IanaTz });
 export const UpdateHospital = z.object({ name: Text(200).optional(), timezone: IanaTz.optional(), active: z.boolean().optional() });
 export const CreateService = z.object({ hospitalId: Uuid, name: Text(200), specialty: Text(120) });

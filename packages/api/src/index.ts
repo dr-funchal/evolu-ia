@@ -8,6 +8,7 @@ import "./routes/documents";
 import "./routes/coordination";
 import "./routes/admin";
 import "./routes/schedule";
+import "./routes/ai";
 
 export { handleApi } from "./router";
 export { handleAuth } from "./auth";

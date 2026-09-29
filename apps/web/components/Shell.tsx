@@ -24,7 +24,7 @@ interface Me {
   tenants: { id: string; name: string; timezone: string; isSynthetic: boolean; grants: { roleLabel: string; serviceName: string | null; hospitalName: string | null }[] }[];
 }
 interface Ctx {
-  tenant: { id: string; name: string; timezone: string; isSynthetic: boolean; modules: { handoffs: boolean } };
+  tenant: { id: string; name: string; timezone: string; isSynthetic: boolean; modules: { handoffs: boolean; ai: boolean } };
   services: Service[];
   tenantCapabilities: string[];
   unreadNotifications: number;

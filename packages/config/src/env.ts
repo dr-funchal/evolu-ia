@@ -22,7 +22,14 @@ const EnvSchema = z.object({
   SESSION_IDLE_MINUTES: z.coerce.number().int().positive().default(60),
   STORAGE_DIR: z.string().default("./storage"),
   UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
-  AI_PROVIDER: z.enum(["none", "mock"]).default("none"),
+  // none = IA desligada na plataforma; openrouter = cada equipe usa a própria chave (Administração).
+  AI_PROVIDER: z.enum(["none", "mock", "openrouter"]).default("none"),
+  // Cifra as chaves de API das equipes em repouso (AES-256-GCM). 32 bytes em base64: openssl rand -base64 32
+  AI_SECRETS_KEY: z
+    .string()
+    .refine((v) => Buffer.from(v, "base64").length === 32, "AI_SECRETS_KEY deve ter 32 bytes em base64")
+    .optional(),
+  OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
   // Diretório de identidades (convites). Usuário de máquina com ORG_USER_MANAGER na organização.
   ZITADEL_API_URL: z.string().url().optional(),
   ZITADEL_SERVICE_PAT: z.string().min(20).optional(),
@@ -53,6 +60,7 @@ export function assertSafeForMode(env: Env): void {
     if (env.AUTH_PROVIDER === "mock") problems.push("AUTH_PROVIDER=mock não é permitido em " + env.APP_MODE);
     if (env.AI_PROVIDER === "mock") problems.push("AI_PROVIDER=mock não é permitido em " + env.APP_MODE);
   }
+  if (env.AI_PROVIDER === "openrouter" && !env.AI_SECRETS_KEY) problems.push("AI_PROVIDER=openrouter exige AI_SECRETS_KEY");
   if (env.APP_MODE === "production" && !env.AUTH_REQUIRE_MFA) {
     problems.push("AUTH_REQUIRE_MFA=false não é permitido em production");
   }

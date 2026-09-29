@@ -78,7 +78,7 @@ Ver [`docs/runbooks/`](docs/runbooks/): executar, migrar/reverter, backup/restau
 - Exame físico e subjetivo nunca são copiados de nota anterior; histórico copiado vem marcado e
   bloqueia a finalização até ser reconfirmado.
 - Logs, auditoria, outbox e notificações não carregam conteúdo clínico.
-- IA não está habilitada; quando houver, só propõe — o médico confirma.
+- IA só propõe — o médico confirma. A chave do OpenRouter de cada equipe fica cifrada e nunca volta ao navegador.
 
 ## Infraestrutura em uso
 
@@ -112,6 +112,17 @@ Uma VPS com Docker Compose ([ADR 0008](docs/adr/0008-infra-vps-docker.md)): `db`
   `INVITE_DELIVERY=email` o próprio Zitadel envia (exige SMTP configurado no Zitadel). O convidado
   define senha e segundo fator e depois entra em `evolu-ia.pulpfy.com`.
 
+## Inteligência artificial ([ADR 0013](docs/adr/0013-ia-openrouter-por-equipe.md))
+
+Cada equipe usa a própria conta do OpenRouter. Em **Administração → Inteligência artificial** o
+administrador cola a chave (validada e guardada cifrada), escolhe o modelo principal (texto; com
+leitura de imagem serve para OCR) e, se quiser, um modelo de transcrição. A escolha é feita numa
+tabela com o preço de cada modelo: por 1 M tokens, estimado por resumo de caso, e por minuto no
+caso da transcrição. Por padrão os pedidos só vão a provedores que não guardam os dados. A tela
+tem teste de conexão, mostra o saldo e o consumo do mês por recurso (sem conteúdo). A plataforma
+liga com `AI_PROVIDER=openrouter` + `AI_SECRETS_KEY` no `.env`. Tudo que a IA gera é proposta
+que o médico revisa ([ADR 0010](docs/adr/0010-ia-somente-proposta.md)).
+
 ## Escala ([ADR 0012](docs/adr/0012-escala.md))
 
 `/escala`: turnos de **visita, retaguarda ou plantão** por serviço, em séries que se repetem
@@ -126,5 +137,5 @@ testada ([runbook](docs/runbooks/backup-restauracao.md)).
 
 **Limitações** (riscos assumidos no uso com dados reais — LGPD): VPS fora do Brasil
 (transferência internacional); backups **sem cifra e sem cópia externa**; uploads sem antivírus;
-CSP com `unsafe-inline`; Zitadel no mesmo servidor Postgres; IA/voz/OCR sem provedor. Detalhes e
+CSP com `unsafe-inline`; Zitadel no mesmo servidor Postgres; transcrição de voz no OpenRouter ainda sem filtro de retenção zero. Detalhes e
 dependências em [`docs/backlog.md`](docs/backlog.md).

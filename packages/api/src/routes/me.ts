@@ -1,6 +1,7 @@
 import { env, demoFeaturesEnabled } from "@evolu/config";
 import { ROLE_LABELS, isRole } from "@evolu/authorization";
 import { SetPersona } from "@evolu/contracts";
+import { aiPlatformEnabled } from "../ai";
 import { audit, tenantTx, userTx } from "../context";
 import { forbidden, json, readJson } from "../http";
 import { route } from "../router";
@@ -70,7 +71,8 @@ route("GET", "/v1/context", async (ctx) => {
       if (r?.ok) tenantCaps.push(c);
     }
     const [n] = await tx<{ n: number }[]>`select count(*)::int n from app.notification_deliveries where read_at is null`;
-    return { tenant, services, tenantCaps, unreadNotifications: n?.n ?? 0 };
+    const [ai] = await tx<{ model: string }[]>`select model from app.ai_config()`;
+    return { tenant, services, tenantCaps, unreadNotifications: n?.n ?? 0, ai: Boolean(ai) && aiPlatformEnabled() };
   });
   return json({
     tenant: data.tenant && {
@@ -78,7 +80,7 @@ route("GET", "/v1/context", async (ctx) => {
       name: data.tenant.name,
       timezone: data.tenant.timezone,
       isSynthetic: data.tenant.is_synthetic,
-      modules: { handoffs: data.tenant.handoffs_enabled },
+      modules: { handoffs: data.tenant.handoffs_enabled, ai: data.ai },
     },
     services: data.services.map((s) => ({
       id: s.service_id,

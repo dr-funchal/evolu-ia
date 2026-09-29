@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { InviteResult, TimezoneSelect } from "@/components/Admin";
 import { useShell } from "@/components/Shell";
+import { AiCard } from "./AiCard";
 import { api } from "@/lib/client";
 import { fmtDateTime } from "@/lib/format";
 
@@ -147,6 +148,7 @@ export default function Admin() {
       <HospitalsCard data={data} run={run} />
       <ServicesCard data={data} run={run} />
       <MembersCard data={data} run={run} scopeLabel={scopeLabel} />
+      <AiCard run={run} />
     </>
   );
 }

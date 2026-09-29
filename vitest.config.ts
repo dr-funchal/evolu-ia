@@ -25,7 +25,10 @@ export default defineConfig({
       APP_BASE_URL: "http://localhost:3000",
       AUTH_PROVIDER: "mock",
       AUTH_REQUIRE_MFA: "true",
-      AI_PROVIDER: "none",
+      // IA contra um OpenRouter falso local (tests/security/ia.test.ts); nunca a API real.
+      AI_PROVIDER: "openrouter",
+      AI_SECRETS_KEY: Buffer.alloc(32, 7).toString("base64"),
+      OPENROUTER_BASE_URL: "http://127.0.0.1:18765/api/v1",
       LOG_LEVEL: "silent",
       DATABASE_URL: toTest(process.env.DATABASE_URL) ?? "",
       WORKER_DATABASE_URL: toTest(process.env.WORKER_DATABASE_URL) ?? "",

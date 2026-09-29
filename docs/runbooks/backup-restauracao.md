@@ -14,7 +14,8 @@
 | `SHA256SUMS-<UTC>` | checksums |
 
 Retenção: `BACKUP_KEEP_DAYS` (padrão 14). Também é preciso guardar **fora da VPS** o `.env`
-(senhas e `ZITADEL_MASTERKEY` — sem a masterkey o dump do Zitadel é inútil).
+(senhas, `ZITADEL_MASTERKEY` — sem ela o dump do Zitadel é inútil — e `AI_SECRETS_KEY` — sem ela
+as chaves do OpenRouter das equipes não abrem e precisam ser recadastradas).
 
 > ⚠️ Pendente antes de dado real: cifrar (age/gpg) e copiar para outro local/provedor.
 
