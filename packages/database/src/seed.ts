@@ -161,6 +161,8 @@ export async function seedSynthetic(sql: Sql, opts: { appMode?: string } = {}): 
     for (const t of tenants) {
       await tx`insert into app.tenants (id, name, slug, timezone, is_synthetic)
                values (${t.id}, ${t.name}, ${t.slug}, 'America/Sao_Paulo', true) on conflict (id) do nothing`;
+      // Fixtures exercitam o fluxo completo, inclusive passagens (módulo opcional, desligado por padrão).
+      await tx`update app.tenants set handoffs_enabled = true where id = ${t.id}`;
     }
     const hospitals = [
       { id: FX.hospA1, t: FX.tenantA, name: "Hospital Aurora Centro (sintético)" },

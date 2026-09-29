@@ -205,7 +205,7 @@ export const ADMIN_ROLES = ["tenant_admin", "clinical_coordinator", "attending_p
 const Email = z.string().trim().toLowerCase().pipe(z.email()).refine((e) => e.length <= 200, "e-mail longo demais");
 const PersonName = Text(200);
 
-export const UpdateTenant = z.object({ name: Text(200).optional(), timezone: IanaTz.optional() });
+export const UpdateTenant = z.object({ name: Text(200).optional(), timezone: IanaTz.optional(), handoffsEnabled: z.boolean().optional() });
 export const CreateHospital = z.object({ name: Text(200), timezone: IanaTz });
 export const UpdateHospital = z.object({ name: Text(200).optional(), timezone: IanaTz.optional(), active: z.boolean().optional() });
 export const CreateService = z.object({ hospitalId: Uuid, name: Text(200), specialty: Text(120) });

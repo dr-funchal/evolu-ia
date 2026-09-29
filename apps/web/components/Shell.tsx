@@ -24,7 +24,7 @@ interface Me {
   tenants: { id: string; name: string; timezone: string; isSynthetic: boolean; grants: { roleLabel: string; serviceName: string | null; hospitalName: string | null }[] }[];
 }
 interface Ctx {
-  tenant: { id: string; name: string; timezone: string; isSynthetic: boolean };
+  tenant: { id: string; name: string; timezone: string; isSynthetic: boolean; modules: { handoffs: boolean } };
   services: Service[];
   tenantCapabilities: string[];
   unreadNotifications: number;
@@ -51,7 +51,7 @@ const SERVICE_KEY = "evolu.service";
 const NAV = [
   { href: "/", label: "Meu dia" },
   { href: "/tarefas", label: "Tarefas" },
-  { href: "/passagens", label: "Passagens" },
+  { href: "/passagens", label: "Passagens", cap: "handoff.participate" },
   { href: "/escala", label: "Escala" },
   { href: "/pendencias", label: "Pendências" },
   { href: "/coordenacao", label: "Coordenação", cap: "coordination.view" },

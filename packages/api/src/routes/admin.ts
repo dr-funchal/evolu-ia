@@ -45,7 +45,9 @@ interface MemberRow {
 
 route("GET", "/v1/admin/overview", async (ctx) => {
   const data = await adminTx(ctx, async (tx) => {
-    const [tenant] = await tx<{ id: string; name: string; timezone: string }[]>`select id, name, timezone from app.tenants where id = ${ctx.tenantId}`;
+    const [t] = await tx<{ id: string; name: string; timezone: string; handoffs_enabled: boolean }[]>`
+      select id, name, timezone, handoffs_enabled from app.tenants where id = ${ctx.tenantId}`;
+    const tenant = t && { id: t.id, name: t.name, timezone: t.timezone, modules: { handoffs: t.handoffs_enabled } };
     const hospitals = await tx<{ id: string; name: string; timezone: string; active: boolean }[]>`
       select id, name, timezone, active from app.hospitals where tenant_id = ${ctx.tenantId} order by name`;
     const services = await tx<{ id: string; name: string; active: boolean; hospital_id: string; specialty: string }[]>`
@@ -91,9 +93,12 @@ route("GET", "/v1/admin/overview", async (ctx) => {
 route("PATCH", "/v1/admin/tenant", async (ctx) => {
   const body = await readJson(ctx.req, UpdateTenant);
   await adminTx(ctx, async (tx) => {
-    await tx`update app.tenants set name = coalesce(${body.name ?? null}, name), timezone = coalesce(${body.timezone ?? null}, timezone)
+    await tx`update app.tenants set name = coalesce(${body.name ?? null}, name), timezone = coalesce(${body.timezone ?? null}, timezone),
+               handoffs_enabled = coalesce(${body.handoffsEnabled ?? null}, handoffs_enabled)
              where id = ${ctx.tenantId}`;
     await audit(tx, ctx, "admin.tenant.update", "tenant", ctx.tenantId);
+    if (body.handoffsEnabled !== undefined)
+      await audit(tx, ctx, body.handoffsEnabled ? "admin.module.handoffs.enable" : "admin.module.handoffs.disable", "tenant", ctx.tenantId);
   });
   return json({ ok: true });
 });

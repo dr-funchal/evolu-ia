@@ -101,6 +101,10 @@ Uma VPS com Docker Compose ([ADR 0008](docs/adr/0008-infra-vps-docker.md)): `db`
   serviço), gera novo convite, suspende e revoga papéis. Não é possível revogar o último
   administrador nem suspender o próprio vínculo. Administrar **não** dá acesso clínico: para
   atender, o administrador atribui a si mesmo um papel clínico num serviço.
+- **Módulos opcionais** (Administração → Equipe): **Passagens de caso** vem desligado; ligado,
+  aparece o menu e a passagem entre médicos. Desligado, a capacidade `handoff.participate` deixa
+  de valer no tenant (`app.user_has_cap`), então API, RLS, menu e avisos obedecem juntos; nada é
+  apagado e religar devolve o histórico.
 - **Convite**: a API usa um usuário de serviço do Zitadel (`ZITADEL_SERVICE_PAT`,
   `ORG_USER_MANAGER`) para achar ou criar a conta pelo e-mail e gerar o código de convite. O
   vínculo fica preso à identidade (`issuer` + `subject`), nunca só ao e-mail. Com

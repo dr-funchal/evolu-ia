@@ -37,7 +37,7 @@ interface Member {
   grants: GrantRow[];
 }
 interface Overview {
-  tenant: { id: string; name: string; timezone: string };
+  tenant: { id: string; name: string; timezone: string; modules: { handoffs: boolean } };
   hospitals: Hospital[];
   services: ServiceRow[];
   specialties: string[];
@@ -167,6 +167,22 @@ function TenantCard({ data, run }: { data: Overview; run: Run }) {
           Salvar
         </button>
       </div>
+      <h3>Módulos</h3>
+      <label className="row">
+        <input
+          type="checkbox"
+          checked={data.tenant.modules.handoffs}
+          onChange={(e) => {
+            const on = e.target.checked;
+            if (!on && !confirm("Desabilitar Passagens? O menu e as ações de passagem somem para toda a equipe. Nada é apagado: ao reabilitar, o histórico volta.")) return;
+            void run(() => api("PATCH", "/v1/admin/tenant", { body: { handoffsEnabled: on } }), on ? "Passagens habilitadas." : "Passagens desabilitadas.");
+          }}
+        />
+        <span>
+          <strong>Passagens de caso</strong>
+          <span className="small muted"> — passagem de plantão (I-PASS) entre médicos, com aceite.</span>
+        </span>
+      </label>
     </div>
   );
 }

@@ -29,3 +29,11 @@
   renovar antes). Sem SMTP, o convite depende de o admin repassar o link. Depois do cadastro o
   login v2 do Zitadel termina em "Você está conectado" sem redirecionar: o convidado precisa
   abrir `evolu-ia.pulpfy.com` (o texto do convite avisa).
+
+## Adendo (29/09/2026) — módulos opcionais por equipe
+
+Passagens de caso passou a ser opcional (`app.tenants.handoffs_enabled`, padrão `false`, migration
+0007), ligado/desligado pelo administrador da equipe. O controle fica num ponto só:
+`app.user_has_cap` nega `handoff.participate` quando o módulo está desligado, e daí derivam a RLS
+das tabelas de passagem, as checagens da API, o contexto da interface e a revalidação do worker.
+Desligar não apaga dados. Ligar/desligar é auditado (`admin.module.handoffs.enable|disable`).

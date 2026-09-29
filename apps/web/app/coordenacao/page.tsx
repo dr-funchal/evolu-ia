@@ -97,15 +97,17 @@ export default function Coordenacao() {
             ))}
           </ul>
         </Block>
-        <Block title="Passagens sem aceite há mais de 1 h" count={data.handoffs.length}>
-          <ul className="small">
-            {data.handoffs.map((h) => (
-              <li key={h.id}>
-                <Link href={`/passagens/${h.id}`}>{fmtDateTime(h.sent_at, tz)}</Link> → {h.receiver_name} ({label(h.status)})
-              </li>
-            ))}
-          </ul>
-        </Block>
+        {ctx.tenant.modules.handoffs && (
+          <Block title="Passagens sem aceite há mais de 1 h" count={data.handoffs.length}>
+            <ul className="small">
+              {data.handoffs.map((h) => (
+                <li key={h.id}>
+                  <Link href={`/passagens/${h.id}`}>{fmtDateTime(h.sent_at, tz)}</Link> → {h.receiver_name} ({label(h.status)})
+                </li>
+              ))}
+            </ul>
+          </Block>
+        )}
         <Block title="Rascunhos parados há mais de 12 h" count={data.staleDrafts.length}>
           <ul className="small">
             {data.staleDrafts.map((n) => (

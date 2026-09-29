@@ -54,8 +54,8 @@ route(
 
 route("GET", "/v1/context", async (ctx) => {
   const data = await tenantTx(ctx, async (tx) => {
-    const [tenant] = await tx<{ id: string; name: string; timezone: string; is_synthetic: boolean }[]>`
-      select id, name, timezone, is_synthetic from app.tenants where id = ${ctx.tenantId}`;
+    const [tenant] = await tx<{ id: string; name: string; timezone: string; is_synthetic: boolean; handoffs_enabled: boolean }[]>`
+      select id, name, timezone, is_synthetic, handoffs_enabled from app.tenants where id = ${ctx.tenantId}`;
     const services = await tx<{
       service_id: string;
       hospital_id: string;
@@ -73,7 +73,13 @@ route("GET", "/v1/context", async (ctx) => {
     return { tenant, services, tenantCaps, unreadNotifications: n?.n ?? 0 };
   });
   return json({
-    tenant: data.tenant && { id: data.tenant.id, name: data.tenant.name, timezone: data.tenant.timezone, isSynthetic: data.tenant.is_synthetic },
+    tenant: data.tenant && {
+      id: data.tenant.id,
+      name: data.tenant.name,
+      timezone: data.tenant.timezone,
+      isSynthetic: data.tenant.is_synthetic,
+      modules: { handoffs: data.tenant.handoffs_enabled },
+    },
     services: data.services.map((s) => ({
       id: s.service_id,
       name: s.service_name,
