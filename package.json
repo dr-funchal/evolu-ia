@@ -1,0 +1,42 @@
+{
+  "name": "evolu-ia",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.6",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "dev": "pnpm --filter @evolu/web dev",
+    "build": "pnpm --filter @evolu/web build",
+    "worker": "pnpm --filter @evolu/worker start",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit && pnpm --filter @evolu/web typecheck",
+    "test": "vitest run",
+    "db:migrate": "tsx packages/database/src/cli.ts up",
+    "db:rollback": "tsx packages/database/src/cli.ts down",
+    "db:status": "tsx packages/database/src/cli.ts status",
+    "db:seed": "tsx scripts/seed.ts",
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@evolu/api": "workspace:*",
+    "@evolu/authorization": "workspace:*",
+    "@evolu/config": "workspace:*",
+    "@evolu/contracts": "workspace:*",
+    "@evolu/database": "workspace:*",
+    "@evolu/domain": "workspace:*",
+    "@evolu/worker": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.4",
+    "eslint": "10.11.0",
+    "globals": "17.12.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "vitest": "5.0.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "unrs-resolver"]
+  }
+}

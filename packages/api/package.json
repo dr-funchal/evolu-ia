@@ -1,0 +1,16 @@
+{
+  "name": "@evolu/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@evolu/authorization": "workspace:*",
+    "@evolu/config": "workspace:*",
+    "@evolu/contracts": "workspace:*",
+    "@evolu/database": "workspace:*",
+    "@evolu/domain": "workspace:*",
+    "openid-client": "6.8.8",
+    "zod": "4.6.5"
+  }
+}

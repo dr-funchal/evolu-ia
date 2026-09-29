@@ -1,0 +1,16 @@
+{
+  "name": "@evolu/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@evolu/config": "workspace:*",
+    "@evolu/contracts": "workspace:*",
+    "@evolu/database": "workspace:*",
+    "@evolu/domain": "workspace:*"
+  }
+}

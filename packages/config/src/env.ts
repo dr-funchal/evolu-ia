@@ -1,0 +1,63 @@
+import { z } from "zod";
+
+export const APP_MODES = ["development", "test", "demo", "production"] as const;
+export type AppMode = (typeof APP_MODES)[number];
+
+const EnvSchema = z.object({
+  APP_MODE: z.enum(APP_MODES).default("development"),
+  APP_BASE_URL: z.string().url().default("http://localhost:3000"),
+  APP_TIMEZONE_DEFAULT: z.string().default("America/Sao_Paulo"),
+  DATABASE_URL: z.string().min(1).optional(),
+  WORKER_DATABASE_URL: z.string().min(1).optional(),
+  MIGRATION_DATABASE_URL: z.string().min(1).optional(),
+  AUTH_PROVIDER: z.enum(["oidc", "mock"]).default("oidc"),
+  OIDC_ISSUER: z.string().url().optional(),
+  OIDC_CLIENT_ID: z.string().optional(),
+  OIDC_CLIENT_SECRET: z.string().optional(),
+  AUTH_REQUIRE_MFA: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
+  SESSION_TTL_HOURS: z.coerce.number().int().positive().default(12),
+  SESSION_IDLE_MINUTES: z.coerce.number().int().positive().default(60),
+  STORAGE_DIR: z.string().default("./storage"),
+  UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  AI_PROVIDER: z.enum(["none", "mock"]).default("none"),
+});
+
+export type Env = z.infer<typeof EnvSchema>;
+
+export class UnsafeConfigurationError extends Error {}
+
+/**
+ * Valida o ambiente. Em produção, recusa qualquer provedor simulado ou recurso de demonstração
+ * (especificação, seção 23.2: "mocks devem estar explicitamente rotulados e bloqueados em produção").
+ */
+export function parseEnv(source: Record<string, string | undefined> = process.env): Env {
+  const env = EnvSchema.parse(source);
+  assertSafeForMode(env);
+  return env;
+}
+
+export function assertSafeForMode(env: Env): void {
+  const problems: string[] = [];
+  if (env.APP_MODE === "production" || env.APP_MODE === "demo") {
+    if (env.AUTH_PROVIDER === "mock") problems.push("AUTH_PROVIDER=mock não é permitido em " + env.APP_MODE);
+    if (env.AI_PROVIDER === "mock") problems.push("AI_PROVIDER=mock não é permitido em " + env.APP_MODE);
+  }
+  if (env.APP_MODE === "production" && !env.AUTH_REQUIRE_MFA) {
+    problems.push("AUTH_REQUIRE_MFA=false não é permitido em production");
+  }
+  if (problems.length) throw new UnsafeConfigurationError(problems.join("; "));
+}
+
+let cached: Env | undefined;
+export function env(): Env {
+  cached ??= parseEnv();
+  return cached;
+}
+
+/** Recursos de demonstração (troca de persona, selo DEMO) só existem em demo/development/test. */
+export function demoFeaturesEnabled(e: Env = env()): boolean {
+  return e.APP_MODE !== "production";
+}

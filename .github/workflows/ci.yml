@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      # Dados exclusivamente sintéticos; senhas descartáveis do CI.
+      MIGRATION_DATABASE_URL: postgresql://evolu_owner:evolu_owner_test@localhost:5432/evolu
+      DATABASE_URL: postgresql://evolu_app:evolu_app_test@localhost:5432/evolu
+      WORKER_DATABASE_URL: postgresql://evolu_worker:evolu_worker_test@localhost:5432/evolu
+      TEST_ADMIN_DATABASE_URL: postgresql://postgres:postgres_ci@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Papéis do banco (sem superuser, sem BYPASSRLS)
+        run: psql "$TEST_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-roles.sql
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Migrations sobem e descem
+        run: |
+          psql "$TEST_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -c "create database evolu owner evolu_owner"
+          pnpm db:migrate && pnpm db:rollback 99 && pnpm db:migrate
+      - run: pnpm build
+        env:
+          APP_MODE: test
+          APP_BASE_URL: http://localhost:3000
+          AUTH_PROVIDER: mock
