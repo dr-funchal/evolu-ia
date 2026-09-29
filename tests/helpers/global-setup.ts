@@ -1,4 +1,5 @@
-import { createSql, migrateUp, seedSynthetic } from "@evolu/database";
+import { createSql, seedSynthetic } from "@evolu/database";
+import { migrateUp } from "@evolu/database/migrate";
 
 /**
  * Recria o banco `evolu_test` do zero a cada execução: migrations reais (papel dono) e seed
