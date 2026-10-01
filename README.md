@@ -137,6 +137,16 @@ Recursos com a IA ligada ([ADR 0014](docs/adr/0014-ia-recursos-clinicos.md)):
 - **Resumo da coordenação:** só pontos de atenção do serviço.
 - **Revisão antes de finalizar:** aponta inconsistências no rascunho.
 
+Evolução simples e cadastro por foto ([ADR 0015](docs/adr/0015-evolucao-simples-contexto-foto.md)):
+
+- **Evolução de um campo só:** dite ou escreva o dia; "Organizar com IA" usa o texto + o contexto
+  do paciente e devolve a evolução organizada, os destaques e as tarefas para checar amanhã
+  (sugestões a aprovar). O formato estruturado continua disponível.
+- **Contexto do paciente:** um campo livre; foto de exame ou de outra evolução é lida pela IA e
+  entra no contexto com a data do documento quando o médico toca em "Adicionar ao contexto".
+- **Incluir paciente por foto** da etiqueta/pulseira: preenche nome, nascimento e leito para
+  conferência. A foto não é guardada.
+
 ## Escala ([ADR 0012](docs/adr/0012-escala.md))
 
 `/escala`: turnos de **visita, retaguarda ou plantão** por serviço, em séries que se repetem

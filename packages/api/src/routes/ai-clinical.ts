@@ -3,6 +3,7 @@ import {
   CreateReport,
   NOTE_SECTIONS,
   NoteContent,
+  OrganizeNote,
   ReviewExtraction,
   SCRIBE_MODES,
   StructureTranscript,
@@ -16,6 +17,9 @@ import {
   BRIEF_SYSTEM,
   BriefOutput,
   EXTRACTION_SYSTEM,
+  OrganizeOutput,
+  PATIENT_PHOTO_SYSTEM,
+  PatientPhotoOutput,
   ExtractionOutput,
   REVIEW_SYSTEM,
   ReviewOutput,
@@ -23,6 +27,7 @@ import {
   TaskSuggestions,
   draftForReview,
   noteAsText,
+  organizeSystem,
   reportSystem,
   scribeMessages,
   taskSuggestionSystem,
@@ -31,7 +36,8 @@ import { audit, capsFor, requireCap, tenantTx, uuidParam, type Ctx } from "../co
 import { ApiError, badRequest, conflict, forbidden, ifMatchVersion, json, notFound, readJson, unprocessable } from "../http";
 import { route } from "../router";
 import { hospitalTimezone, loadEpisode, type EpisodeScope } from "../scope";
-import { rejectOversized, storeUploadedDocument } from "./documents";
+import { writeEpisodeContext } from "./census";
+import { rejectOversized, sniffMime, storeUploadedDocument } from "./documents";
 
 /**
  * Recursos clínicos de IA (ADR 0014). Tudo aqui devolve PROPOSTA: nada entra na evolução, na lista
@@ -120,6 +126,8 @@ route("POST", "/v1/ai/notes/:id/transcribe", async (ctx) => {
   });
   const transcript = (await runTranscription(ctx, "transcription", cfg, bytes, format)).trim();
   if (!transcript) throw unprocessable("empty_transcript", "Nada foi reconhecido no áudio.");
+  // Evolução simples: só o texto ditado; quem organiza é /organize, com o caso inteiro.
+  if (form.get("structure") === "0") return json({ transcript, mode, notes: null });
   // A transcrição já custou: se a organização falhar, devolvemos o texto para tentar de novo.
   try {
     return json({ transcript, mode, notes: await structure(ctx, cfg, transcript, mode) });
@@ -165,21 +173,26 @@ route("POST", "/v1/ai/notes/:id/review", async (ctx) => {
 const EXTRACTION_COLUMNS = `x.id, x.document_id, x.category, x.target, x.title, to_char(x.exam_date, 'YYYY-MM-DD') exam_date, x.summary,
   x.items, x.status, x.created_at, x.reviewed_at, x.version, d.mime_type`;
 
-async function extractDocument(ctx: Ctx, cfg: AiConfig, ep: EpisodeScope, documentId: string, bytes: Uint8Array, mime: string) {
-  if (mime !== "application/pdf") {
-    const sees = await listModels()
-      .then((ms) => {
-        const m = ms.find((x) => x.id === cfg.model);
-        return !m || m.input.includes("image"); // catálogo sem o modelo: tenta mesmo assim
-      })
-      .catch(() => true);
-    if (!sees) throw unprocessable("ai_no_vision", "O modelo escolhido não lê imagens. Troque em Administração → Inteligência artificial.");
-  }
+async function requireVision(cfg: AiConfig) {
+  const sees = await listModels()
+    .then((ms) => {
+      const m = ms.find((x) => x.id === cfg.model);
+      return !m || m.input.includes("image"); // catálogo sem o modelo: tenta mesmo assim
+    })
+    .catch(() => true);
+  if (!sees) throw unprocessable("ai_no_vision", "O modelo escolhido não lê imagens. Troque em Administração → Inteligência artificial.");
+}
+
+function mediaPart(bytes: Uint8Array, mime: string): ChatPart {
   const b64 = Buffer.from(bytes).toString("base64");
-  const part: ChatPart =
-    mime === "application/pdf"
-      ? { type: "file", file: { filename: "documento.pdf", file_data: `data:application/pdf;base64,${b64}` } }
-      : { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } };
+  return mime === "application/pdf"
+    ? { type: "file", file: { filename: "documento.pdf", file_data: `data:application/pdf;base64,${b64}` } }
+    : { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } };
+}
+
+async function extractDocument(ctx: Ctx, cfg: AiConfig, ep: EpisodeScope, documentId: string, bytes: Uint8Array, mime: string) {
+  if (mime !== "application/pdf") await requireVision(cfg);
+  const part = mediaPart(bytes, mime);
   const { data } = await runJson(
     ctx,
     "document.ocr",
@@ -276,8 +289,8 @@ route("PATCH", "/v1/extractions/:id", async (ctx) => {
   const expected = ifMatchVersion(ctx.req);
   const body = await readJson(ctx.req, ReviewExtraction);
   return tenantTx(ctx, async (tx) => {
-    const [x] = await tx<{ service_id: string; status: string; version: number }[]>`
-      select service_id, status, version from app.document_extractions where id = ${id}`;
+    const [x] = await tx<{ service_id: string; service_episode_id: string; status: string; version: number }[]>`
+      select service_id, service_episode_id, status, version from app.document_extractions where id = ${id}`;
     if (!x) throw notFound();
     await requireCap(ctx, tx, x.service_id, "clinical.write", { type: "document_extraction", id });
     if (x.status !== "proposed") throw conflict("extraction_reviewed", "Esta leitura já foi revisada.");
@@ -292,7 +305,16 @@ route("PATCH", "/v1/extractions/:id", async (ctx) => {
       where id = ${id} and version = ${expected}`;
     if (rows.count === 0) throw conflict("version_conflict", "A leitura foi alterada por outra pessoa. Recarregue.");
     await audit(tx, ctx, `extraction.${body.action}`, "document_extraction", id);
-    return json({ id, status, version: expected + 1 });
+    // Evolução simples: o achado confirmado vai para o campo único de contexto, com a data do exame.
+    let contextVersion: number | undefined;
+    if (body.action === "confirm" && body.appendToContext) {
+      const [r] = await tx<{ title: string; exam_date: string | null; summary: string }[]>`
+        select title, to_char(exam_date, 'DD/MM/YYYY') exam_date, summary from app.document_extractions where id = ${id}`;
+      const entry = `[${r!.title} — ${r!.exam_date ?? "sem data no documento"}] ${r!.summary}`.trim();
+      contextVersion = await writeEpisodeContext(tx, ctx, x, x.service_episode_id, (cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${entry}` : entry));
+      await audit(tx, ctx, "episode.context.update", "service_episode", x.service_episode_id);
+    }
+    return json({ id, status, version: expected + 1, contextVersion });
   });
 });
 
@@ -637,9 +659,11 @@ route("POST", "/v1/ai/services/:id/brief", async (ctx) => {
   const lines = snap.rows.map((r, i) => {
     const c = r.last_content ? NoteContent.safeParse(r.last_content) : null;
     const sec = (k: "pendencias" | "destino") => {
-      const f = c?.success ? c.data.sections[k] : null;
-      return f && (f.state === "informado" || f.state === "historico") && f.text ? f.text.slice(0, 400) : null;
+      if (!c?.success || c.data.schema !== 1) return null;
+      const f = c.data.sections[k];
+      return (f.state === "informado" || f.state === "historico") && f.text ? f.text.slice(0, 400) : null;
     };
+    const destaques = c?.success && c.data.schema === 2 && c.data.destaques.length ? c.data.destaques.join("; ").slice(0, 400) : null;
     return [
       `P${i + 1}`,
       `internado há ${days(r.admitted_at)} d`,
@@ -649,6 +673,7 @@ route("POST", "/v1/ai/services/:id/brief", async (ctx) => {
       r.note_today ? "evolução hoje: sim" : `evolução hoje: NÃO (última: ${r.last_note_at ? `há ${days(r.last_note_at)} d` : "nunca"})`,
       sec("pendencias") ? `pendências: ${sec("pendencias")}` : null,
       sec("destino") ? `destino: ${sec("destino")}` : null,
+      destaques ? `destaques da última evolução: ${destaques}` : null,
       r.overdue || r.blocked || r.unassigned ? `tarefas: ${r.overdue} atrasadas, ${r.blocked} bloqueadas, ${r.unassigned} sem responsável` : null,
       r.proposed ? `${r.proposed} sugestões de tarefa aguardando aprovação` : null,
       r.has_owner ? null : "SEM médico responsável",
@@ -673,4 +698,131 @@ route("POST", "/v1/ai/services/:id/brief", async (ctx) => {
     })
     .filter(Boolean);
   return json({ atencao, geral: data.geral, generatedAt: new Date() });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Evolução simples (ADR 0015): texto do dia + caso → evolução organizada, destaques e tarefas a
+// checar amanhã. A evolução volta como proposta (o médico edita e finaliza); as tarefas nascem
+// 'proposed' (source 'ia') e só valem depois de aprovadas.
+// ---------------------------------------------------------------------------------------------
+route("POST", "/v1/ai/notes/:id/organize", async (ctx) => {
+  const id = uuidParam(ctx);
+  const body = await readJson(ctx.req, OrganizeNote);
+  const n = await loadDraftForAi(ctx, id);
+  const s = await tenantTx(ctx, async (tx) => {
+    const ep = await loadEpisode(tx, n.service_episode_id);
+    const tz = await hospitalTimezone(tx, ep.hospital_id);
+    const [c] = await tx<{ reason: string | null; context: string }[]>`
+      select reason, context from app.episode_clinical where service_episode_id = ${ep.id}`;
+    const problems = await tx<{ description: string; certainty: string }[]>`
+      select description, certainty from app.problems where service_episode_id = ${ep.id} and status in ('ativo', 'em_investigacao')
+      order by created_at`;
+    const extractions = await tx<{ title: string; exam_date: string | null; summary: string }[]>`
+      select title, to_char(exam_date, 'DD/MM/YYYY') exam_date, summary from app.document_extractions
+      where service_episode_id = ${ep.id} and status = 'confirmed' order by coalesce(exam_date, created_at::date) desc limit 10`;
+    const [last] = await tx<{ attended_at: Date; content: unknown }[]>`
+      select v.attended_at, v.content from app.notes n join app.note_versions v on v.id = n.final_version_id
+      where n.service_episode_id = ${ep.id} and n.status = 'final' order by v.attended_at desc limit 1`;
+    const tasks = await tx<{ action: string; status: string }[]>`
+      select action, status from app.tasks where service_episode_id = ${ep.id} and status in ('proposed', 'open', 'in_progress', 'blocked')`;
+    const pending = await pendingSuggestions(tx, ep.id);
+    const canTask = ep.status === "active" || ep.status === "accepted";
+    await audit(tx, ctx, "ai.note.organize", "note", id);
+    const material = [
+      `Hoje: ${fmtDate(new Date(), tz)}`,
+      c?.reason ? `Motivo do acompanhamento: ${c.reason}` : "",
+      c?.context?.trim() ? `Contexto do paciente (registrado antes; não é o dia de hoje):\n${c.context.slice(0, 8000)}` : "",
+      problems.length ? `Problemas ativos: ${problems.map((p) => `${p.description} (${p.certainty})`).join("; ")}` : "",
+      extractions.length
+        ? `Exames/documentos confirmados (com a data do exame):\n${extractions.map((x) => `- ${x.exam_date ?? "s/ data"} ${x.title}: ${x.summary.slice(0, 500)}`).join("\n")}`
+        : "",
+      last ? `Evolução anterior (${fmtDate(last.attended_at, tz)} — NÃO é de hoje):\n${noteAsText(NoteContent.parse(last.content), n.problems, 3000)}` : "",
+      `Tarefas já existentes (não repetir):\n${tasks.map((t) => `- [${t.status}] ${t.action}`).join("\n") || "nenhuma"}`,
+      `=== TEXTO DO DIA ===\n${body.transcricao}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    return { ep, tz, material, max: canTask ? Math.max(0, MAX_PENDING_SUGGESTIONS - pending) : 0 };
+  });
+  const cfg = await loadAiConfig(ctx);
+  const { data } = await runJson(
+    ctx,
+    "note.organize",
+    [
+      { role: "system", content: organizeSystem(s.max) },
+      { role: "user", content: s.material },
+    ],
+    OrganizeOutput,
+    { config: cfg, maxTokens: 4000, timeoutMs: 120_000 },
+  );
+  // Prazo: amanhã às 10h no fuso do hospital.
+  const tomorrow = localYmd(new Date(Date.now() + 86_400_000), s.tz);
+  const dueAt = new Date(localDayBounds(tomorrow, s.tz).start.getTime() + 10 * 3_600_000);
+  const tasks = await tenantTx(ctx, async (tx) => {
+    await requireCap(ctx, tx, s.ep.service_id, "clinical.write", { type: "note", id });
+    const room = Math.min(s.max, MAX_PENDING_SUGGESTIONS - (await pendingSuggestions(tx, s.ep.id)));
+    const out: { id: string; action: string; completionCriterion: string; priority: string; dueAt: Date; version: number }[] = [];
+    for (const t of data.tarefas.slice(0, Math.max(0, room))) {
+      const [row] = await tx<{ id: string }[]>`
+        insert into app.tasks (tenant_id, hospital_id, service_id, encounter_id, service_episode_id, task_type, action,
+          completion_criterion, requested_by, due_at, due_timezone, priority, status, source)
+        values (${ctx.tenantId}, ${s.ep.hospital_id}, ${s.ep.service_id}, ${s.ep.encounter_id}, ${s.ep.id}, ${t.taskType},
+                ${t.action}, ${t.completionCriterion}, ${ctx.session.userId}, ${dueAt}, ${s.tz}, ${t.priority}, 'proposed', 'ia')
+        returning id`;
+      await tx`insert into app.task_events (tenant_id, service_id, task_id, actor_user_id, event, to_status)
+               values (${ctx.tenantId}, ${s.ep.service_id}, ${row!.id}, ${ctx.session.userId}, 'created', 'proposed')`;
+      out.push({ id: row!.id, action: t.action, completionCriterion: t.completionCriterion, priority: t.priority, dueAt, version: 1 });
+    }
+    if (out.length) await audit(tx, ctx, "ai.tasks.suggest", "service_episode", s.ep.id);
+    return out;
+  });
+  return json({ destaques: data.destaques, evolucao: data.evolucao, tasks, tasksSkipped: data.tarefas.length - tasks.length });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Novo paciente por foto (etiqueta, pulseira, tela do hospital): a IA só lê nome, nascimento,
+// leito, prontuário e sexo para pré-preencher o formulário. A imagem não é guardada.
+// ---------------------------------------------------------------------------------------------
+const SEX_MAP = { F: "feminino", M: "masculino", I: "intersexo" } as const;
+
+route("POST", "/v1/ai/services/:id/patient-photo", async (ctx) => {
+  const serviceId = uuidParam(ctx);
+  rejectOversized(ctx, env().UPLOAD_MAX_BYTES);
+  await tenantTx(ctx, async (tx) => {
+    await requireCap(ctx, tx, serviceId, "patient.basic.write", { type: "service", id: serviceId });
+  });
+  const cfg = await loadAiConfig(ctx);
+  let form: FormData;
+  try {
+    form = await ctx.req.formData();
+  } catch {
+    throw badRequest("invalid_form", "Envie multipart/form-data com o campo 'file'.");
+  }
+  const file = form.get("file");
+  if (!(file instanceof Blob) || file.size === 0) throw badRequest("file_required", "Foto ausente.");
+  if (file.size > env().UPLOAD_MAX_BYTES) throw new ApiError(413, "file_too_large", "Arquivo grande demais.");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const mime = sniffMime(bytes);
+  if (!mime) throw new ApiError(415, "unsupported_type", "Envie foto (JPG/PNG) ou PDF.");
+  if (mime !== "application/pdf") await requireVision(cfg);
+  await tenantTx(ctx, (tx) => audit(tx, ctx, "ai.patient.photo", "service", serviceId));
+  const { data } = await runJson(
+    ctx,
+    "patient.photo",
+    [
+      { role: "system", content: PATIENT_PHOTO_SYSTEM },
+      { role: "user", content: [{ type: "text", text: "Leia a identificação do paciente." }, mediaPart(bytes, mime)] },
+    ],
+    PatientPhotoOutput,
+    { config: cfg, maxTokens: 500, timeoutMs: 90_000 },
+  );
+  if (!data.legivel) return json({ legivel: false });
+  return json({
+    legivel: true,
+    fullName: data.nome,
+    birthDate: data.nascimento,
+    location: data.leito,
+    mrn: data.prontuario,
+    sex: data.sexo ? SEX_MAP[data.sexo] : null,
+  });
 });

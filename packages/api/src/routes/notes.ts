@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { getObject } from "@evolu/config";
 import { CreateAddendum, CreateNote, FinalizeNote, NoteContent, UpdateNote } from "@evolu/contracts";
-import { checkFinalize, emptyNoteContent, prefillFromPrevious } from "@evolu/domain";
+import { checkFinalize, emptyNoteContent, emptySimpleNote, prefillFromPrevious } from "@evolu/domain";
 import type { Tx } from "@evolu/database";
 import { audit, capsFor, emitOutbox, hasCap, requireCap, tenantTx, uuidParam, type Ctx } from "../context";
 import { ApiError, conflict, forbidden, ifMatchVersion, json, notFound, readJson, unprocessable } from "../http";
@@ -60,9 +60,10 @@ route("POST", "/v1/episodes/:id/notes", async (ctx) => {
       throw conflict("episode_not_active", "Acompanhamento não está ativo.");
     }
     const problems = await activeProblemIds(tx, episodeId);
-    let content = emptyNoteContent(problems);
+    const format = body.format ?? (body.prefillFromLast ? "estruturada" : "simples");
+    let content: NoteContent = format === "simples" ? emptySimpleNote() : emptyNoteContent(problems);
     let prefilledFrom: string | null = null;
-    if (body.prefillFromLast) {
+    if (body.prefillFromLast && format === "estruturada") {
       const [last] = await tx<{ id: string; content: NoteContent }[]>`
         select v.id, v.content from app.note_versions v join app.notes n on n.id = v.note_id
         where n.service_episode_id = ${episodeId} and n.status = 'final' and v.id = n.final_version_id
@@ -150,7 +151,7 @@ route("PATCH", "/v1/notes/:id", async (ctx) => {
     await requireCap(ctx, tx, n.service_id, "clinical.write", { type: "note", id });
     await assertEditable(tx, ctx, n, expected);
     const valid = new Set((await tx<{ id: string }[]>`select id from app.problems where service_episode_id = ${n.service_episode_id}`).map((r) => r.id));
-    if (body.content.problems.some((p) => !valid.has(p.problemId))) {
+    if (body.content.schema === 1 && body.content.problems.some((p) => !valid.has(p.problemId))) {
       throw unprocessable("invalid_problem", "Problema não pertence a este acompanhamento.");
     }
     const rows = await tx`

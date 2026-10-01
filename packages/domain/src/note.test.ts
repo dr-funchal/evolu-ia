@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkFinalize, emptyNoteContent, prefillFromPrevious } from "./note";
+import { checkFinalize, emptyNoteContent, emptySimpleNote, prefillFromPrevious, renderNoteText } from "./note";
 import { localDayBounds } from "./time";
 
 const V = "11111111-1111-4111-8111-111111111111";
@@ -47,5 +47,30 @@ describe("tempo local", () => {
   it("dia com mudança de horário (America/New_York, 2026-11-01) tem 25h", () => {
     const { start, end } = localDayBounds("2026-11-01", "America/New_York");
     expect((end.getTime() - start.getTime()) / 3_600_000).toBe(25);
+  });
+});
+
+describe("evolução simples (schema 2)", () => {
+  it("só exige conteúdo e data do atendimento", () => {
+    const c = emptySimpleNote();
+    expect(checkFinalize(c, new Date()).blocking.map((b) => b.code)).toEqual(["empty_note"]);
+    c.transcricao = "Paciente estável, sem queixas.";
+    expect(checkFinalize(c, new Date())).toEqual({ blocking: [], warnings: [] });
+    expect(checkFinalize(c, null).blocking.map((b) => b.code)).toEqual(["attended_at_missing"]);
+  });
+
+  it("nova estruturada a partir de uma simples não herda nada", () => {
+    const prev = { ...emptySimpleNote(), evolucao: "texto" };
+    expect(prefillFromPrevious(prev, V, [P])).toEqual(emptyNoteContent([P]));
+  });
+
+  it("exportação usa destaques e evolução organizada", () => {
+    const t = renderNoteText(
+      { schema: 2, transcricao: "bruto", evolucao: "Organizada.", destaques: ["Atenção à K+"] },
+      { patientName: "X", authorName: "Y", attendedAt: "a", recordedAt: "b", versionNo: 1, problems: new Map() },
+    );
+    expect(t).toContain("- Atenção à K+");
+    expect(t).toContain("Organizada.");
+    expect(t).not.toContain("bruto");
   });
 });

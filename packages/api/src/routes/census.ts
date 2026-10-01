@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { CreateEncounter, CreateProblem, EpisodeTransition, UpdateProblem } from "@evolu/contracts";
+import { CreateEncounter, CreateProblem, EpisodeTransition, UpdateEpisodeContext, UpdateProblem } from "@evolu/contracts";
 import { localDayBounds, localYmd } from "@evolu/domain";
 import type { Tx } from "@evolu/database";
 import { audit, capsFor, emitOutbox, hasCap, queryUuid, requireCap, tenantTx, uuidParam, type Ctx } from "../context";
@@ -285,7 +285,7 @@ route("GET", "/v1/episodes/:id", async (ctx) => {
 
     let clinical: unknown = null;
     if (caps["clinical.read"]) {
-      const [c] = await tx`select reason, requester_text from app.episode_clinical where service_episode_id = ${id}`;
+      const [c] = await tx`select reason, requester_text, context, context_version from app.episode_clinical where service_episode_id = ${id}`;
       const problems = await tx`
         select id, description, certainty, status, version, last_reviewed_at from app.problems
         where service_episode_id = ${id} order by case status when 'ativo' then 0 when 'em_investigacao' then 1 else 2 end, created_at`;
@@ -305,7 +305,12 @@ route("GET", "/v1/episodes/:id", async (ctx) => {
         where t.service_episode_id = ${id}
         order by case t.status when 'blocked' then 0 when 'open' then 1 when 'in_progress' then 2 when 'proposed' then 3 else 4 end,
                  t.due_at nulls last`;
-      clinical = { reason: c?.reason ?? null, requesterText: c?.requester_text ?? null, problems, notes, othersDrafts: others?.n ?? 0, tasks };
+      clinical = {
+        reason: c?.reason ?? null,
+        requesterText: c?.requester_text ?? null,
+        context: c?.context ?? "",
+        contextVersion: c?.context_version ?? 0,
+        problems, notes, othersDrafts: others?.n ?? 0, tasks };
     }
     const documents = await tx`
       select id, kind, mime_type, size_bytes, status, created_at, uploaded_by = app.current_user_id() as mine
@@ -399,6 +404,52 @@ route("POST", "/v1/episodes/:id/location", async (ctx) => {
              values (${ctx.tenantId}, ${ep.hospital_id}, ${ep.encounter_id}, ${body.bedId ?? null}, ${body.location}, ${now}, ${ctx.session.userId})`;
     await audit(tx, ctx, "encounter.location", "encounter", ep.encounter_id);
     return json({ ok: true });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Contexto do paciente: um campo único (história, antecedentes, exames trazidos por foto).
+// Versão otimista própria (context_version) — If-Match 0 quando ainda não há linha.
+// ---------------------------------------------------------------------------------------------
+type EpisodeRef = { service_id: string };
+
+export async function writeEpisodeContext(
+  tx: Tx,
+  ctx: Ctx,
+  ep: EpisodeRef,
+  id: string,
+  next: (current: string) => string,
+  expected?: number,
+): Promise<number> {
+  const [cur] = await tx<{ context: string; context_version: number }[]>`
+    select context, context_version from app.episode_clinical where service_episode_id = ${id} for update`;
+  const version = cur?.context_version ?? 0;
+  if (expected !== undefined && expected !== version) {
+    throw conflict("version_conflict", "O contexto foi alterado por outra pessoa. Recarregue.");
+  }
+  const text = next(cur?.context ?? "");
+  if (text.length > 20000) throw unprocessable("context_too_long", "O contexto passou de 20.000 caracteres. Resuma antes de acrescentar.");
+  if (cur) {
+    await tx`update app.episode_clinical set context = ${text}, context_version = context_version + 1,
+               updated_by = app.current_user_id(), updated_at = now()
+             where service_episode_id = ${id}`;
+  } else {
+    await tx`insert into app.episode_clinical (tenant_id, service_id, service_episode_id, context, context_version, updated_by)
+             values (${ctx.tenantId}, ${ep.service_id}, ${id}, ${text}, 1, ${ctx.session.userId})`;
+  }
+  return version + 1;
+}
+
+route("PUT", "/v1/episodes/:id/context", async (ctx) => {
+  const id = uuidParam(ctx);
+  const body = await readJson(ctx.req, UpdateEpisodeContext);
+  const expected = ifMatchVersion(ctx.req, 0);
+  return tenantTx(ctx, async (tx) => {
+    const ep = await loadEpisode(tx, id);
+    await requireCap(ctx, tx, ep.service_id, "clinical.write", { type: "service_episode", id });
+    const version = await writeEpisodeContext(tx, ctx, ep, id, () => body.context, expected);
+    await audit(tx, ctx, "episode.context.update", "service_episode", id);
+    return json({ contextVersion: version });
   });
 });
 

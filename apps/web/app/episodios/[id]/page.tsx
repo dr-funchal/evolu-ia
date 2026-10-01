@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { OcrPanel, ReportsPanel, SuggestTasksButton } from "@/components/AiEpisode";
+import { ReportsPanel, SuggestTasksButton } from "@/components/AiEpisode";
+import { ContextCard } from "@/components/ContextCard";
 import { useShell } from "@/components/Shell";
 import { TaskForm, TaskList, useTeam, type TaskRowData } from "@/components/Tasks";
 import { api } from "@/lib/client";
@@ -30,6 +31,8 @@ interface Episode {
   capabilities: Record<string, boolean>;
   clinical: {
     reason: string | null;
+    context: string;
+    contextVersion: number;
     requesterText: string | null;
     problems: { id: string; description: string; certainty: string; status: string; version: number; last_reviewed_at: string | null }[];
     notes: { id: string; note_type: string; status: string; attended_at: string | null; finalized_at: string | null; author_name: string; addenda: number }[];
@@ -78,184 +81,186 @@ export default function EpisodePage() {
     void run(() => api("POST", `/v1/episodes/${id}/transition`, { body: { action, justification }, ifMatch: ep.version }));
   };
 
+  const canWrite = Boolean(caps["clinical.write"]);
+  const open = ["active", "accepted"].includes(ep.status);
+  const newNote = (format?: "estruturada") =>
+    void run(async () => {
+      const r = await api("POST", `/v1/episodes/${id}/notes`, { body: format ? { format } : {} });
+      router.push(`/notas/${r.id}`);
+    });
+
   return (
     <>
-      <div className="card">
-        <div className="row between">
-          <div>
-            <h1 style={{ marginBottom: 4 }}>{ep.full_name}</h1>
-            <div className="muted small">
-              {ageFrom(ep.birth_date)} · nasc. {fmtDate(ep.birth_date)} · {ep.sex ?? "sexo não informado"} · {ep.location ?? "sem leito"} ·{" "}
-              {ep.service_name} · {ep.hospital_name}
-            </div>
-            <div className="muted small">
-              Admissão {fmtDateTime(ep.admitted_at, ep.timezone)}
-              {ep.identifiers.map((i) => ` · ${i.system}: ${i.value}`)}
-            </div>
+      <div className="page-head">
+        <div>
+          <Link href="/" className="back">
+            ← Pacientes
+          </Link>
+          <h1>{ep.full_name}</h1>
+          <div className="muted small">
+            {ep.location ?? "sem leito"} · {ageFrom(ep.birth_date)} · nasc. {fmtDate(ep.birth_date)} · {ep.sex ?? "sexo não informado"}
           </div>
-          <div className="row">
-            <span className="badge plain">{label(ep.status)}</span>
-            {ep.priority && <span className="badge warn">{PRIORITY[ep.priority] ?? ep.priority}</span>}
+          <div className="muted small">
+            {ep.service_name} · {ep.hospital_name} · admissão {fmtDateTime(ep.admitted_at, ep.timezone)}
+            {ep.identifiers.map((i) => ` · ${i.system}: ${i.value}`)}
           </div>
         </div>
-        {caps["census.manage"] && (
-          <div className="row" style={{ marginTop: 8 }}>
-            {ep.status === "requested" && <button onClick={() => transition("accept")}>Aceitar solicitação</button>}
-            {(ep.status === "requested" || ep.status === "accepted") && <button onClick={() => transition("activate")}>Iniciar acompanhamento</button>}
-            {ep.status === "active" && <button onClick={() => transition("close")}>Encerrar acompanhamento</button>}
-            {["requested", "accepted"].includes(ep.status) && (
-              <button className="danger" onClick={() => transition("cancel")}>
-                Cancelar
-              </button>
-            )}
-          </div>
-        )}
-        {msg && <div className="alert warn">{msg}</div>}
-      </div>
-
-      <div className="grid2">
-        <div className="card">
-          <h2 style={{ marginTop: 0 }}>Equipe responsável</h2>
-          {ep.careTeam.length ? (
-            <ul>
-              {ep.careTeam.map((m) => (
-                <li key={m.userId}>
-                  {m.displayName}{" "}
-                  {caps["census.manage"] && (
-                    <button className="link small" onClick={() => void run(() => api("POST", `/v1/episodes/${id}/assignments`, { body: { userId: m.userId, action: "remove" } }))}>
-                      remover
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="badge warn">sem responsável</p>
-          )}
-          {caps["census.manage"] && (
-            <select
-              aria-label="Adicionar à equipe"
-              value=""
-              onChange={(e) => e.target.value && void run(() => api("POST", `/v1/episodes/${id}/assignments`, { body: { userId: e.target.value, action: "add" } }))}
-            >
-              <option value="">adicionar pessoa…</option>
-              {team
-                .filter((t) => !ep.careTeam.some((m) => m.userId === t.userId))
-                .map((t) => (
-                  <option key={t.userId} value={t.userId}>
-                    {t.displayName}
-                  </option>
-                ))}
-            </select>
-          )}
-          {(caps["census.manage"] || caps["clinical.write"]) && (
-            <p>
-              <button
-                className="link small"
-                onClick={() => {
-                  const location = prompt("Nova localização / leito:", ep.location ?? "");
-                  if (location) void run(() => api("POST", `/v1/episodes/${id}/location`, { body: { location } }));
-                }}
-              >
-                Atualizar leito
-              </button>
-            </p>
-          )}
-        </div>
-
-        <div className="card">
-          <h2 style={{ marginTop: 0 }}>Documentos</h2>
-          {ep.documents.length === 0 && <p className="muted small">Nenhum documento.</p>}
-          <ul>
-            {ep.documents.map((d) => (
-              <li key={d.id}>
-                <a href={`/api/v1/documents/${d.id}/content`} target="_blank" rel="noopener">
-                  {d.kind} · {d.mime_type} · {Math.round(d.size_bytes / 1024)} KB
-                </a>{" "}
-                <span className="muted small">{fmtDateTime(d.created_at, ep.timezone)}</span>
-              </li>
-            ))}
-          </ul>
-          {caps["document.upload"] && <Upload episodeId={id} onDone={load} />}
-          <p className="muted small">Documento anexado é fonte; não vira informação clínica sem revisão médica.</p>
+        <div className="row">
+          <span className={`pill ${ep.status === "active" ? "ok" : "plain"}`}>{label(ep.status)}</span>
+          {ep.priority && <span className="pill warn">{PRIORITY[ep.priority] ?? ep.priority}</span>}
         </div>
       </div>
+      {caps["census.manage"] && (
+        <div className="row" style={{ marginBottom: 16 }}>
+          {ep.status === "requested" && <button onClick={() => transition("accept")}>Aceitar solicitação</button>}
+          {(ep.status === "requested" || ep.status === "accepted") && <button onClick={() => transition("activate")}>Iniciar acompanhamento</button>}
+          {ep.status === "active" && <button onClick={() => transition("close")}>Encerrar acompanhamento</button>}
+          {["requested", "accepted"].includes(ep.status) && (
+            <button className="danger" onClick={() => transition("cancel")}>
+              Cancelar
+            </button>
+          )}
+        </div>
+      )}
+      {msg && <div className="alert warn">{msg}</div>}
 
       {c ? (
         <>
           <div className="card">
-            {c.reason && (
-              <p>
-                <strong>Motivo:</strong> {c.reason}
-              </p>
-            )}
-            <h2>Problemas</h2>
-            <Problems episodeId={id} problems={c.problems} canWrite={Boolean(caps["clinical.write"])} onChanged={load} />
-          </div>
-
-          <div className="card">
-            <div className="row between">
-              <h2 style={{ margin: 0 }}>Evoluções</h2>
-              {caps["clinical.write"] && ["active", "accepted"].includes(ep.status) && (
-                <div className="row">
-                  <button
-                    className="primary"
-                    onClick={() => void run(async () => {
-                      const r = await api("POST", `/v1/episodes/${id}/notes`, { body: { prefillFromLast: false } });
-                      router.push(`/notas/${r.id}`);
-                    })}
-                  >
-                    Nova evolução
-                  </button>
-                  <button
-                    onClick={() => void run(async () => {
-                      const r = await api("POST", `/v1/episodes/${id}/notes`, { body: { prefillFromLast: true } });
-                      router.push(`/notas/${r.id}`);
-                    })}
-                    title="Traz contexto, antecedentes e estado basal da última nota como histórico a reconfirmar. Nunca traz exame."
-                  >
-                    Nova a partir da última
-                  </button>
-                </div>
+            <div className="card-head">
+              <h2>Evoluções</h2>
+              {canWrite && open && (
+                <button className="primary" onClick={() => newNote()}>
+                  + Nova evolução
+                </button>
               )}
             </div>
             {c.othersDrafts > 0 && <p className="muted small">{c.othersDrafts} rascunho(s) de outras pessoas (não visíveis).</p>}
-            {c.notes.length === 0 && <p className="muted small">Nenhuma evolução.</p>}
-            <ul>
+            {c.notes.length === 0 && <p className="muted small">Nenhuma evolução ainda. Toque em “Nova evolução” e dite ou escreva o dia.</p>}
+            <ul className="list">
               {c.notes.map((n) => (
                 <li key={n.id}>
-                  <Link href={`/notas/${n.id}`}>
+                  <Link href={`/notas/${n.id}`} className="strong-link">
                     {n.note_type === "evolucao" ? "Evolução" : "Interconsulta inicial"} — {fmtDateTime(n.attended_at, ep.timezone)}
-                  </Link>{" "}
-                  <span className={`badge ${n.status === "final" ? "ok" : "warn"}`}>{label(n.status)}</span>{" "}
+                  </Link>
                   <span className="muted small">
                     {n.author_name}
                     {n.addenda ? ` · ${n.addenda} adendo(s)` : ""}
                   </span>
+                  <span className={`pill ${n.status === "final" ? "ok" : "warn"}`}>{label(n.status)}</span>
                 </li>
               ))}
             </ul>
+            {canWrite && open && (
+              <button className="link small" onClick={() => newNote("estruturada")} title="Formato antigo, com seções e problemas separados.">
+                Usar formato estruturado (seções)
+              </button>
+            )}
           </div>
 
-          {aiOn && (
-            <OcrPanel episodeId={id} timezone={ep.timezone} canWrite={Boolean(caps["clinical.write"] && caps["document.upload"])} onChanged={load} />
-          )}
+          <ContextCard
+            episodeId={id}
+            context={c.context}
+            contextVersion={c.contextVersion}
+            canWrite={canWrite}
+            canPhoto={Boolean(aiOn && canWrite && caps["document.upload"])}
+            onChanged={load}
+          />
 
           <div className="card">
-            <div className="row between">
-              <h2 style={{ marginTop: 0 }}>Tarefas</h2>
-              {aiOn && caps["clinical.write"] && ["active", "accepted"].includes(ep.status) && <SuggestTasksButton episodeId={id} onDone={load} />}
+            <div className="card-head">
+              <h2>Tarefas</h2>
+              {aiOn && canWrite && open && <SuggestTasksButton episodeId={id} onDone={load} />}
             </div>
-            <TaskList tasks={c.tasks} timezone={ep.timezone} canEdit={Boolean(caps["clinical.write"])} onChanged={load} />
+            <TaskList tasks={c.tasks} timezone={ep.timezone} canEdit={canWrite} onChanged={load} />
+            {canWrite && (
+              <details className="more">
+                <summary>+ Nova tarefa</summary>
+                <TaskForm episodeId={id} serviceId={ep.serviceId} timezone={ep.timezone} problems={c.problems.filter((p) => p.status !== "resolvido")} onCreated={load} />
+              </details>
+            )}
           </div>
-          {caps["clinical.write"] && (
-            <TaskForm episodeId={id} serviceId={ep.serviceId} timezone={ep.timezone} problems={c.problems.filter((p) => p.status !== "resolvido")} onCreated={load} />
-          )}
-          {aiOn && <ReportsPanel episodeId={id} timezone={ep.timezone} canWrite={Boolean(caps["clinical.write"])} />}
         </>
       ) : (
         <div className="alert warn">Seu papel neste serviço não inclui leitura clínica.</div>
       )}
+
+      <details className="card more">
+        <summary>Mais: equipe, documentos{c ? ", problemas e relatórios" : ""}</summary>
+        {c?.reason && (
+          <p>
+            <strong>Motivo:</strong> {c.reason}
+          </p>
+        )}
+        <h3>Equipe responsável</h3>
+        {ep.careTeam.length ? (
+          <ul>
+            {ep.careTeam.map((m) => (
+              <li key={m.userId}>
+                {m.displayName}{" "}
+                {caps["census.manage"] && (
+                  <button className="link small" onClick={() => void run(() => api("POST", `/v1/episodes/${id}/assignments`, { body: { userId: m.userId, action: "remove" } }))}>
+                    remover
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="pill warn">sem responsável</p>
+        )}
+        {caps["census.manage"] && (
+          <select
+            aria-label="Adicionar à equipe"
+            value=""
+            onChange={(e) => e.target.value && void run(() => api("POST", `/v1/episodes/${id}/assignments`, { body: { userId: e.target.value, action: "add" } }))}
+          >
+            <option value="">adicionar pessoa…</option>
+            {team
+              .filter((t) => !ep.careTeam.some((m) => m.userId === t.userId))
+              .map((t) => (
+                <option key={t.userId} value={t.userId}>
+                  {t.displayName}
+                </option>
+              ))}
+          </select>
+        )}
+        {(caps["census.manage"] || canWrite) && (
+          <p>
+            <button
+              className="link small"
+              onClick={() => {
+                const location = prompt("Nova localização / leito:", ep.location ?? "");
+                if (location) void run(() => api("POST", `/v1/episodes/${id}/location`, { body: { location } }));
+              }}
+            >
+              Atualizar leito
+            </button>
+          </p>
+        )}
+
+        <h3>Documentos</h3>
+        {ep.documents.length === 0 && <p className="muted small">Nenhum documento.</p>}
+        <ul>
+          {ep.documents.map((d) => (
+            <li key={d.id}>
+              <a href={`/api/v1/documents/${d.id}/content`} target="_blank" rel="noopener">
+                {d.kind} · {d.mime_type} · {Math.round(d.size_bytes / 1024)} KB
+              </a>{" "}
+              <span className="muted small">{fmtDateTime(d.created_at, ep.timezone)}</span>
+            </li>
+          ))}
+        </ul>
+        {caps["document.upload"] && <Upload episodeId={id} onDone={load} />}
+
+        {c && (
+          <>
+            <h3>Problemas</h3>
+            <Problems episodeId={id} problems={c.problems} canWrite={canWrite} onChanged={load} />
+          </>
+        )}
+        {c && aiOn && <ReportsPanel episodeId={id} timezone={ep.timezone} canWrite={canWrite} />}
+      </details>
     </>
   );
 }

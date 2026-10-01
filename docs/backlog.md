@@ -25,7 +25,7 @@ Status: ✅ feito e testado · 🟡 parcial · ⬜ não iniciado. "Teste" aponta
 |---|---|---|---|---|
 | F1-01 | Censo por serviço | Lista do dia no timezone do serviço; filtros meus/pendentes; secretária sem clínico | ✅ | fluxo + E2E |
 | F1-02 | Admissão no serviço | Paciente + internação + episódio no serviço + leito; um episódio aberto por internação e serviço (índice único) | ✅ | fluxo |
-| F1-03 | Rascunho estruturado | Versão otimista; subjetivo/exame nunca copiados; cópia marcada bloqueia finalizar | ✅ | fluxo + `domain` |
+| F1-03 | Rascunho estruturado | Versão otimista; subjetivo/exame nunca copiados; cópia marcada bloqueia finalizar — padrão agora é a evolução simples (ADR 0015); estruturada segue opcional | ✅ | fluxo + `domain` + `evolucao-simples` |
 | F1-04 | Finalização imutável | `If-Match` + `Idempotency-Key`; 409 em conflito; SHA-256; trigger impede alteração | ✅ | fluxo |
 | F1-05 | Adendo | Só em nota final, autor identificado, sem alterar original | ✅ | fluxo |
 | F1-06 | Tarefas | Ação, critério, contingência, responsável, prazo IANA, histórico, atrasadas | ✅ | fluxo |
@@ -35,7 +35,7 @@ Status: ✅ feito e testado · 🟡 parcial · ⬜ não iniciado. "Teste" aponta
 | F1-10 | Notificações | Via outbox/worker; só tipo + link interno | ✅ | fluxo |
 | F1-11 | Exportação de nota | Job revalida vínculo; arquivo privado; download autorizado | 🟡 | cancelada fica `queued` |
 | F1-12 | Isolamento | API, SQL, arquivos e jobs entre tenants/serviços → 404/zero linhas | ✅ | `tests/security/` |
-| F1-13 | Responsividade | Uso em celular à beira-leito | 🟡 | cabeçalho quebra em telas estreitas |
+| F1-13 | Responsividade | Uso em celular à beira-leito | ✅ | ADR 0015: menu em gaveta, barra de ação fixa, evolução de um campo, visual NeuroFinance |
 | F1-14 | Administração de vínculos na UI | Plataforma cria equipes; admin cadastra hospitais/serviços, convida por e-mail (Zitadel), concede/revoga papéis por escopo | ✅ | ADR 0011; validade de grant ainda só por SQL |
 
 ## Próximas fases (resumo)
@@ -44,5 +44,5 @@ Status: ✅ feito e testado · 🟡 parcial · ⬜ não iniciado. "Teste" aponta
 |---|---|---|
 | F2-01 | Escala, plantões e financeiro (centavos, regras versionadas, competência fechada imutável) — **escala feita (ADR 0012)**; financeiro pendente | F1-14 |
 | F2-02 | Protocolos clínicos (rascunho até aprovação médica) | revisão médica |
-| F3-01 | IA/voz/OCR como proposta revisável — **base (ADR 0013) e recursos 1, 2, 3, 6, 8, 9, 10 feitos (ADR 0014)**: ditado/escriba em notas clínicas, OCR com confirmação, relatório da internação, tarefas sugeridas, resumo da coordenação, revisão. Pendentes: envio de relatório por SMTP, transcrição com retenção zero quando o OpenRouter aceitar | — |
+| F3-01 | IA/voz/OCR como proposta revisável — **base (ADR 0013) e recursos 1, 2, 3, 6, 8, 9, 10 feitos (ADR 0014)**: ditado/escriba em notas clínicas, OCR com confirmação, relatório da internação, tarefas sugeridas, resumo da coordenação, revisão; **ADR 0015**: evolução de um campo organizada pela IA com tarefas para amanhã, contexto por foto, paciente por foto. Pendentes: envio de relatório por SMTP, transcrição com retenção zero quando o OpenRouter aceitar | — |
 | P-01 | Pré-produção com dado real | **Em uso real desde 29/09 com riscos assumidos pelo responsável.** Pendentes: hospedagem no Brasil ou base legal para transferência, backups cifrados/externos, antivírus, CSP sem `unsafe-inline`, Zitadel em banco separado, DPIA/RIPD |

@@ -60,16 +60,35 @@ export const NoteProblemEntry = z.object({
   plano: NoteField,
 });
 
-export const NoteContent = z.object({
+/** Evolução estruturada por seções (formato original, schema 1). */
+export const StructuredNote = z.object({
   schema: z.literal(1),
   sections: z.object(Object.fromEntries(NOTE_SECTIONS.map((s) => [s, NoteField])) as Record<NoteSection, typeof NoteField>),
   problems: z.array(NoteProblemEntry).max(50),
 });
+export type StructuredNote = z.infer<typeof StructuredNote>;
+
+/**
+ * Evolução simples (schema 2, ADR 0015): um campo livre (ditado/transcrição/anotação do dia) e a
+ * evolução organizada — proposta pela IA e revisada pelo médico — com os destaques do dia.
+ */
+export const SimpleNote = z.object({
+  schema: z.literal(2),
+  transcricao: z.string().max(60000).default(""),
+  evolucao: z.string().max(20000).default(""),
+  destaques: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+});
+export type SimpleNote = z.infer<typeof SimpleNote>;
+
+export const NoteContent = z.discriminatedUnion("schema", [StructuredNote, SimpleNote]);
 export type NoteContent = z.infer<typeof NoteContent>;
 
+export const NOTE_FORMATS = ["simples", "estruturada"] as const;
 export const CreateNote = z.object({
   noteType: z.enum(["evolucao", "interconsulta_inicial"]).default("evolucao"),
-  /** Traz contexto/antecedentes/estado basal da última nota final como "histórico" (nunca o exame). */
+  /** Padrão: simples; com prefillFromLast, estruturada. */
+  format: z.enum(NOTE_FORMATS).optional(),
+  /** Traz contexto/antecedentes/estado basal da última nota final como "histórico" (nunca o exame). Só na estruturada. */
   prefillFromLast: z.boolean().default(false),
 });
 
@@ -304,8 +323,16 @@ export const ReviewExtraction = z.object({
   category: z.enum(EXTRACTION_CATEGORIES).optional(),
   target: z.enum(EXTRACTION_TARGETS).optional(),
   examDate: z.iso.date().nullable().optional(),
+  /** Ao confirmar, acrescenta título, data e resumo ao campo de contexto do paciente. */
+  appendToContext: z.boolean().optional(),
 });
 
 export const REPORT_PURPOSES = ["paciente", "cobranca"] as const;
 export const CreateReport = z.object({ purpose: z.enum(REPORT_PURPOSES) });
 export const UpdateReport = z.object({ body: Text(40000) });
+
+// ---------------------------------------------------------------------------------------------
+// Evolução simples, contexto do paciente e cadastro por foto (ADR 0015)
+// ---------------------------------------------------------------------------------------------
+export const OrganizeNote = z.object({ transcricao: Text(60000) });
+export const UpdateEpisodeContext = z.object({ context: z.string().trim().max(20000) });

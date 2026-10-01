@@ -55,11 +55,11 @@ export async function readJson<S extends z.ZodType>(req: Request, schema: S): Pr
 }
 
 /** Lê If-Match como número de versão (aceita `3`, `"3"` ou `W/"3"`). */
-export function ifMatchVersion(req: Request): number {
+export function ifMatchVersion(req: Request, min = 1): number {
   const h = req.headers.get("if-match");
   if (!h) throw new ApiError(428, "if_match_required", "Envie o cabeçalho If-Match com a versão que você editou.");
   const n = Number(h.replace(/^W\//, "").replaceAll('"', "").trim());
-  if (!Number.isInteger(n) || n < 1) throw badRequest("invalid_if_match", "If-Match inválido.");
+  if (!Number.isInteger(n) || n < min) throw badRequest("invalid_if_match", "If-Match inválido.");
   return n;
 }
 

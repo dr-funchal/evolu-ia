@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useShell } from "@/components/Shell";
 import { api } from "@/lib/client";
-import { ageFrom, CERTAINTY, fmtDateTime, label, PRIORITY } from "@/lib/format";
+import { ageFrom, fmtDateTime, label, PRIORITY } from "@/lib/format";
 
 interface Item {
   episodeId: string;
@@ -27,7 +27,7 @@ interface Item {
   } | null;
 }
 
-export default function MeuDia() {
+export default function PacientesDoDia() {
   const { service, ctx, me, can } = useShell();
   const [data, setData] = useState<{ day: string; items: Item[]; capabilities: Record<string, boolean>; service: { timezone: string } } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,89 +66,113 @@ export default function MeuDia() {
   if (!service || !data) return <p className="muted">Carregando censo…</p>;
 
   const caps = data.capabilities;
+  const active = data.items.filter((i) => i.status === "active");
+  const semEvolucao = active.filter((i) => i.documentation && !i.documentation.hasFinalNoteInPeriod).length;
+  const atrasadas = data.items.reduce((n, i) => n + (i.clinical?.overdueTasks ?? 0), 0);
+  const rascunhos = data.items.reduce((n, i) => n + (i.clinical?.drafts ?? 0), 0);
   const items = data.items.filter((i) => {
     if (filter === "meus") return i.careTeam.some((c) => c.userId === me.user.id);
     if (filter === "pendentes") return i.documentation && !i.documentation.hasFinalNoteInPeriod && i.status === "active";
     return true;
   });
-  const pendentes = data.items.filter((i) => i.status === "active" && i.documentation && !i.documentation.hasFinalNoteInPeriod).length;
+  const tabs: [typeof filter, string][] = [
+    ["todos", `Todos (${data.items.length})`],
+    ["meus", "Sob meus cuidados"],
+    ["pendentes", `Sem evolução hoje${caps["documentation.pending.view"] ? ` (${semEvolucao})` : ""}`],
+  ];
 
   return (
     <>
-      <div className="row between">
+      <div className="page-head">
         <div>
-          <h1>Meu dia — {service.name}</h1>
-          <p className="muted small">
-            {service.hospitalName} · dia {data.day.split("-").reverse().join("/")} ({data.service.timezone}) · {data.items.length} {data.items.length === 1 ? "paciente" : "pacientes"}
-            {caps["documentation.pending.view"] ? ` · ${pendentes} sem evolução finalizada hoje` : ""}
-          </p>
+          <h1>Pacientes do dia</h1>
+          <div className="muted small">
+            {service.name} · {service.hospitalName} · {data.day.split("-").reverse().join("/")}
+          </div>
         </div>
-        <div className="row">
-          <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} aria-label="Filtro">
-            <option value="todos">Todos</option>
-            <option value="meus">Sob meus cuidados</option>
-            <option value="pendentes">Sem evolução hoje</option>
-          </select>
-          {can("patient.basic.write") && (
-            <Link className="button primary" href="/censo/novo">
-              Incluir paciente
-            </Link>
-          )}
+        {can("patient.basic.write") && (
+          <Link className="button primary" href="/censo/novo">
+            + Incluir paciente
+          </Link>
+        )}
+      </div>
+
+      <div className="stats">
+        <div className="stat">
+          <div className="label">Pacientes</div>
+          <div className="value">{data.items.length}</div>
         </div>
+        {caps["documentation.pending.view"] && (
+          <div className={`stat ${semEvolucao ? "alert-val" : ""}`}>
+            <div className="label">Sem evolução hoje</div>
+            <div className="value">{semEvolucao}</div>
+          </div>
+        )}
+        {caps["clinical.read"] && (
+          <>
+            <div className={`stat ${atrasadas ? "alert-val" : ""}`}>
+              <div className="label">Tarefas atrasadas</div>
+              <div className="value">{atrasadas}</div>
+            </div>
+            <div className="stat">
+              <div className="label">Rascunhos</div>
+              <div className="value">{rascunhos}</div>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="tabs" role="tablist">
+        {tabs.map(([k, t]) => (
+          <button key={k} role="tab" aria-selected={filter === k} className={filter === k ? "active" : ""} onClick={() => setFilter(k)}>
+            {t}
+          </button>
+        ))}
       </div>
       {!caps["clinical.read"] && (
         <div className="alert warn small">Seu papel neste serviço não inclui leitura clínica: você vê só cadastro e pendências.</div>
       )}
-      {items.length === 0 && <div className="card muted">Nenhum paciente neste filtro.</div>}
-      {items.map((i) => (
-        <div key={i.episodeId} className="card">
-          <div className="patient">
+      <div className="card">
+        {items.length === 0 && <p className="muted">Nenhum paciente neste filtro.</p>}
+        {items.map((i) => (
+          <div key={i.episodeId} className="patient-row">
             <div>
-              <Link className="name" href={`/episodios/${i.episodeId}`}>
+              <Link className="patient-name" href={`/episodios/${i.episodeId}`}>
                 {i.patient.fullName}
-              </Link>{" "}
-              <span className="muted small">
-                {ageFrom(i.patient.birthDate)} · {i.location ?? "sem leito"} {i.mrn ? `· pront. ${i.mrn}` : ""}
-              </span>
+              </Link>
+              <div className="muted small">
+                {i.location ?? "sem leito"} · {ageFrom(i.patient.birthDate)}
+                {i.mrn ? ` · pront. ${i.mrn}` : ""}
+                {i.careTeam.length ? ` · ${i.careTeam.map((c) => c.displayName).join(", ")}` : ""}
+              </div>
             </div>
-            <div className="row">
-              <span className={`badge ${i.status === "requested" ? "warn" : "plain"}`}>{label(i.status)}</span>
-              {i.priority && i.priority !== "rotina" && <span className="badge bad">{PRIORITY[i.priority]}</span>}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              {i.status !== "active" && <span className={`pill ${i.status === "requested" ? "warn" : "plain"}`}>{label(i.status)}</span>}
+              {i.priority && i.priority !== "rotina" && <span className="pill bad">{PRIORITY[i.priority]}</span>}
               {i.documentation &&
                 (i.documentation.hasFinalNoteInPeriod ? (
-                  <span className="badge ok">evolução de hoje finalizada</span>
+                  <span className="pill ok">evoluído hoje</span>
                 ) : i.documentation.hasDraft ? (
-                  <span className="badge warn">rascunho pendente</span>
+                  <span className="pill warn">rascunho</span>
                 ) : i.status === "active" ? (
-                  <span className="badge bad">sem evolução hoje</span>
+                  <span className="pill bad">sem evolução</span>
                 ) : null)}
+              {!i.careTeam.length && <span className="pill plain">sem responsável</span>}
             </div>
             {i.clinical && (
               <div className="small" style={{ gridColumn: "1 / -1" }}>
-                {i.clinical.reason && <div className="muted">{i.clinical.reason}</div>}
-                {i.clinical.problems.length > 0 && (
-                  <div>
-                    {i.clinical.problems.map((p) => (
-                      <span key={p.id} className="badge plain" style={{ marginRight: 4 }}>
-                        {p.description} ({CERTAINTY[p.certainty] ?? p.certainty})
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="row muted" style={{ marginTop: 4 }}>
+                {i.clinical.reason && <div>{i.clinical.reason}</div>}
+                <div className="row muted" style={{ gap: "4px 10px" }}>
                   <span>Última evolução: {fmtDateTime(i.clinical.lastFinalAt, service.timezone)}</span>
-                  <span>· tarefas abertas: {i.clinical.openTasks}</span>
-                  {i.clinical.overdueTasks > 0 && <span className="badge bad">{i.clinical.overdueTasks} atrasada(s)</span>}
-                  {i.clinical.myDraft && <Link href={`/notas/${i.clinical.myDraft.id}`}>continuar meu rascunho</Link>}
+                  <span>· {i.clinical.openTasks} tarefa(s)</span>
+                  {i.clinical.overdueTasks > 0 && <span className="pill bad">{i.clinical.overdueTasks} atrasada(s)</span>}
+                  {i.clinical.myDraft && <Link href={`/notas/${i.clinical.myDraft.id}`}>continuar meu rascunho →</Link>}
                 </div>
               </div>
             )}
-            <div className="small muted" style={{ gridColumn: "1 / -1" }}>
-              Equipe: {i.careTeam.length ? i.careTeam.map((c) => c.displayName).join(", ") : <span className="badge warn">sem responsável</span>}
-            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </>
   );
 }

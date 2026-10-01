@@ -48,15 +48,15 @@ export function useShell(): ShellValue {
 
 const SERVICE_KEY = "evolu.service";
 
-const NAV = [
-  { href: "/", label: "Meu dia" },
+const NAV: { href: string; label: string; cap?: string; tenantCap?: string; system?: boolean }[] = [
+  { href: "/", label: "Pacientes do dia" },
   { href: "/tarefas", label: "Tarefas" },
   { href: "/passagens", label: "Passagens", cap: "handoff.participate" },
   { href: "/escala", label: "Escala" },
   { href: "/pendencias", label: "Pendências" },
   { href: "/coordenacao", label: "Coordenação", cap: "coordination.view" },
-  { href: "/auditoria", label: "Auditoria", tenantCap: "audit.read" },
-  { href: "/admin", label: "Administração", tenantCap: "org.manage" },
+  { href: "/auditoria", label: "Auditoria", tenantCap: "audit.read", system: true },
+  { href: "/admin", label: "Administração", tenantCap: "org.manage", system: true },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -66,6 +66,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [serviceId, setServiceIdState] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "anon" | "mfa" | "ready" | "no-tenant" | "error">("loading");
   const [tick, setTick] = useState(0);
+  const [drawer, setDrawer] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -163,60 +164,86 @@ export function Shell({ children }: { children: ReactNode }) {
   };
   const anyService = (cap: string) => ctx.services.some((s) => s.capabilities.includes(cap));
 
+  const nav = NAV.filter((n) => (!n.cap || anyService(n.cap)) && (!n.tenantCap || ctx.tenantCapabilities.includes(n.tenantCap)));
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const link = (href: string, text: ReactNode, badge?: number) => (
+    <Link key={href} href={href} className={isActive(href) ? "active" : ""} onClick={() => setDrawer(false)}>
+      <span>{text}</span>
+      {badge ? <span className="count">{badge}</span> : null}
+    </Link>
+  );
+
   return (
     <ShellContext.Provider value={{ me, ctx, service, setServiceId, can, refresh: () => setTick((t) => t + 1) }}>
-      {me.demo && (
-        <div className="demo-banner" role="note">
-          DEMONSTRAÇÃO — somente dados sintéticos. Não insira dados reais de pacientes.
-        </div>
-      )}
-      <header className="top">
-        <div className="brand">
-          <Link href="/">Evolu-IA</Link>
-          {ctx.tenant.isSynthetic && <span className="badge demo">DEMO</span>}
-        </div>
-        <nav>
-          {NAV.filter((n) => (!n.cap || anyService(n.cap)) && (!n.tenantCap || ctx.tenantCapabilities.includes(n.tenantCap))).map((n) => (
-            <Link key={n.href} href={n.href} className={pathname === n.href ? "active" : ""}>
-              {n.label}
-            </Link>
-          ))}
-          <Link href="/notificacoes" className={pathname === "/notificacoes" ? "active" : ""}>
-            Avisos{ctx.unreadNotifications > 0 && <span className="count">{ctx.unreadNotifications}</span>}
+      <div className={`app ${drawer ? "drawer-open" : ""}`}>
+        <header className="topbar">
+          <button className="icon" aria-label="Abrir menu" onClick={() => setDrawer(true)}>
+            ☰
+          </button>
+          <Link href="/" className="brand">
+            Evolu-IA
           </Link>
-          {me.isPlatformAdmin && (
-            <Link href="/plataforma" className={pathname === "/plataforma" ? "active" : ""}>
-              Plataforma
+          <Link href="/notificacoes" className="icon" aria-label="Avisos">
+            🔔{ctx.unreadNotifications > 0 && <span className="count">{ctx.unreadNotifications}</span>}
+          </Link>
+        </header>
+        <div className="scrim" onClick={() => setDrawer(false)} />
+        <aside className="sidebar">
+          <div className="brand-block">
+            <Link href="/" className="brand" onClick={() => setDrawer(false)}>
+              Evolu-IA
             </Link>
+            <div className="tagline">Visita hospitalar</div>
+            {ctx.tenant.isSynthetic ? <span className="pill live">DEMO</span> : <span className="pill live">● LIVE</span>}
+          </div>
+          {(me.tenants.length > 1 || ctx.services.length > 0) && (
+            <div className="side-selects">
+              {me.tenants.length > 1 && (
+                <select aria-label="Instituição" value={tenantId ?? ""} onChange={(e) => setTenantId(e.target.value)}>
+                  {me.tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {ctx.services.length > 0 && (
+                <select aria-label="Serviço" value={serviceId ?? ""} onChange={(e) => setServiceId(e.target.value)}>
+                  {ctx.services.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} · {s.hospitalName}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           )}
-        </nav>
-        <div className="who">
-          {me.tenants.length > 1 && (
-            <select aria-label="Instituição" value={tenantId ?? ""} onChange={(e) => setTenantId(e.target.value)}>
-              {me.tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+          <nav>
+            <div className="nav-section">Principal</div>
+            {nav.filter((n) => !n.system).map((n) => link(n.href, n.label))}
+            {link("/notificacoes", "Avisos", ctx.unreadNotifications)}
+            {(nav.some((n) => n.system) || me.isPlatformAdmin) && <div className="nav-section">Sistema</div>}
+            {nav.filter((n) => n.system).map((n) => link(n.href, n.label))}
+            {me.isPlatformAdmin && link("/plataforma", "Plataforma")}
+          </nav>
+          <div className="side-foot">
+            {me.isDemoOperator && <PersonaPicker onChanged={() => location.assign("/")} />}
+            <div className="user" title={me.realUser ? `Operando como persona; conta real: ${me.realUser.displayName}` : ""}>
+              {me.user.displayName}
+            </div>
+            <span className="pill tag">{ctx.tenant.name}</span>
+            <LogoutButton />
+          </div>
+        </aside>
+        <div className="main">
+          {me.demo && (
+            <div className="demo-banner" role="note">
+              DEMONSTRAÇÃO — somente dados sintéticos. Não insira dados reais de pacientes.
+            </div>
           )}
-          {ctx.services.length > 0 && (
-            <select aria-label="Serviço" value={serviceId ?? ""} onChange={(e) => setServiceId(e.target.value)}>
-              {ctx.services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} · {s.hospitalName}
-                </option>
-              ))}
-            </select>
-          )}
-          {me.isDemoOperator && <PersonaPicker onChanged={() => location.assign("/")} />}
-          <span className="user" title={me.realUser ? `Operando como persona; conta real: ${me.realUser.displayName}` : ""}>
-            {me.user.displayName}
-          </span>
-          <LogoutButton />
+          <main className="page">{children}</main>
         </div>
-      </header>
-      <main className="page">{children}</main>
+      </div>
     </ShellContext.Provider>
   );
 }
@@ -256,7 +283,7 @@ function PersonaPicker({ onChanged }: { onChanged: () => void }) {
 function LogoutButton({ label = "Sair" }: { label?: string }) {
   return (
     <form method="post" action="/auth/logout" className="inline">
-      <button type="submit" className="link">
+      <button type="submit" className="outline">
         {label}
       </button>
     </form>
@@ -268,7 +295,7 @@ function Landing() {
     <main className="center">
       <div className="card narrow">
         <h1>Evolu-IA</h1>
-        <p>Visita hospitalar e coordenação de equipes: censo por serviço, evolução estruturada, tarefas e passagem de plantão.</p>
+        <p>Visita hospitalar e coordenação de equipes: censo por serviço, evolução por ditado organizada pela IA, tarefas e passagem de plantão.</p>
         <p className="muted small">Acesso restrito a contas convidadas pela equipe, com segundo fator obrigatório.</p>
         <a className="button primary" href="/auth/login">
           Entrar

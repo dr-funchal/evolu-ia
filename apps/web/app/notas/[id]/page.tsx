@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { NOTE_SECTIONS, type NoteContent, type NoteField } from "@evolu/contracts";
 import { FIELD_STATE_LABELS, SECTION_LABELS } from "@evolu/domain";
 import { AiReview, FindingsPanel, ScribePanel } from "@/components/AiNote";
+import { SimpleNoteEditor } from "@/components/SimpleNote";
 import { useShell } from "@/components/Shell";
 import { api, ApiFailure, newKey } from "@/lib/client";
 import { CERTAINTY, fmtDateTime, fromLocalInput, label, toLocalInput } from "@/lib/format";
@@ -69,16 +70,6 @@ export default function NotePage() {
   if (!note || !content) return msg ? <div className="alert bad">{msg.text}</div> : <p className="muted">Carregando…</p>;
   const editable = note.permissions.edit;
 
-  const setSection = (s: (typeof NOTE_SECTIONS)[number], f: NoteField) => {
-    setContent({ ...content, sections: { ...content.sections, [s]: f } });
-    setDirty(true);
-  };
-  const setProblem = (i: number, k: "avaliacao" | "plano", f: NoteField) => {
-    const problems = content.problems.map((p, j) => (j === i ? { ...p, [k]: f } : p));
-    setContent({ ...content, problems });
-    setDirty(true);
-  };
-
   async function save(): Promise<number | null> {
     setBusy(true);
     setMsg(null);
@@ -125,6 +116,96 @@ export default function NotePage() {
   }
 
   const aiOn = ctx.tenant.modules.ai && editable;
+
+  const header = (
+    <>
+      <div className="page-head">
+        <div>
+          <Link href={`/episodios/${note.episodeId}`} className="back">
+            ← Voltar ao paciente
+          </Link>
+          <h1>{note.noteType === "evolucao" ? "Evolução" : "Interconsulta inicial"}</h1>
+          <div className="muted small">
+            {note.author.displayName}
+            {note.finalizedAt && ` · finalizada em ${fmtDateTime(note.finalizedAt, tz)}`}
+            {!editable && ` · atendimento ${fmtDateTime(note.attendedAt, tz)}`}
+          </div>
+        </div>
+        <div className="row">
+          <span className={`pill ${note.status === "final" ? "ok" : "warn"}`}>{label(note.status)}</span>
+          {editable && (
+            <input
+              aria-label={`Data/hora do atendimento (${tz})`}
+              type="datetime-local"
+              value={attended}
+              onChange={(e) => {
+                setAttended(e.target.value);
+                setDirty(true);
+              }}
+            />
+          )}
+        </div>
+      </div>
+      {conflict && (
+        <div className="alert bad">
+          Esta evolução foi alterada em outro lugar. Suas mudanças não foram salvas. <button onClick={load}>Recarregar a versão atual</button>
+        </div>
+      )}
+    </>
+  );
+
+  if (content.schema === 2) {
+    const blocking = note.status === "draft" ? (note.check?.blocking ?? []) : [];
+    return (
+      <>
+        {header}
+        <SimpleNoteEditor
+          noteId={note.id}
+          content={content}
+          editable={editable}
+          aiOn={aiOn}
+          tz={tz}
+          onChange={(c) => {
+            setContent(c);
+            setDirty(true);
+          }}
+        />
+        {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
+        {blocking.length > 0 && !dirty && blocking.map((b, i) => <div key={i} className="alert warn">{b.message}</div>)}
+        {editable && (
+          <div className="action-bar">
+            <button onClick={() => void save()} disabled={busy || !dirty}>
+              Salvar
+            </button>
+            {note.permissions.finalize ? (
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() => {
+                  if (confirm("Finalizar? A evolução ficará imutável; correções só por adendo.")) void finalize();
+                }}
+              >
+                Finalizar evolução
+              </button>
+            ) : (
+              <span className="muted small">Seu papel não permite finalizar.</span>
+            )}
+          </div>
+        )}
+        {note.status === "final" && <FinalPanel note={note} tz={tz} onChanged={load} />}
+      </>
+    );
+  }
+
+  const setSection = (s: (typeof NOTE_SECTIONS)[number], f: NoteField) => {
+    setContent({ ...content, sections: { ...content.sections, [s]: f } });
+    setDirty(true);
+  };
+  const setProblem = (i: number, k: "avaliacao" | "plano", f: NoteField) => {
+    const problems = content.problems.map((p, j) => (j === i ? { ...p, [k]: f } : p));
+    setContent({ ...content, problems });
+    setDirty(true);
+  };
   /** Aplica texto proposto pela IA acrescentando ao que já existe na seção (nunca substitui). */
   const appendToSection = (s: (typeof NOTE_SECTIONS)[number], text: string) => {
     const cur = content.sections[s];
@@ -143,33 +224,8 @@ export default function NotePage() {
 
   return (
     <>
-      <p className="small">
-        <Link href={`/episodios/${note.episodeId}`}>← voltar ao paciente</Link>
-      </p>
-      <div className="card">
-        <div className="row between">
-          <h1 style={{ margin: 0 }}>{note.noteType === "evolucao" ? "Evolução" : "Interconsulta inicial"}</h1>
-          <span className={`badge ${note.status === "final" ? "ok" : "warn"}`}>{label(note.status)}</span>
-        </div>
-        <p className="muted small">
-          Autor: {note.author.displayName}
-          {note.finalizedAt && ` · finalizada em ${fmtDateTime(note.finalizedAt, tz)}`}
-        </p>
-        <div className="field">
-          <label htmlFor="att">Data/hora do atendimento ({tz})</label>
-          {editable ? (
-            <input id="att" type="datetime-local" value={attended} onChange={(e) => { setAttended(e.target.value); setDirty(true); }} />
-          ) : (
-            <div>{fmtDateTime(note.attendedAt, tz)}</div>
-          )}
-        </div>
-        {conflict && (
-          <div className="alert bad">
-            Esta evolução foi alterada em outro lugar. Suas mudanças não foram salvas.{" "}
-            <button onClick={load}>Recarregar a versão atual</button>
-          </div>
-        )}
-      </div>
+      {header}
+      <p className="muted small">Formato estruturado (evoluções antigas ou criadas assim).</p>
 
       {aiOn && <ScribePanel noteId={note.id} onApply={appendToSection} onAddProblem={addProblem} />}
       {aiOn && <FindingsPanel episodeId={note.episodeId} onApply={appendToSection} />}

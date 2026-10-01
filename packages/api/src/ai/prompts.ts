@@ -1,5 +1,5 @@
 import { NOTE_SECTIONS, type NoteContent } from "@evolu/contracts";
-import { FIELD_STATE_LABELS, SECTION_LABELS } from "@evolu/domain";
+import { FIELD_STATE_LABELS, SECTION_LABELS, simpleNoteLines } from "@evolu/domain";
 import { z } from "zod";
 
 /**
@@ -214,6 +214,10 @@ Responda somente JSON: {"issues":[{"severity":"atencao|info","section":"chave da
 // ---------------------------------------------------------------------------------------------
 export function noteAsText(content: NoteContent, problems: Map<string, string>, maxChars = 3000): string {
   const out: string[] = [];
+  if (content.schema === 2) {
+    const text = simpleNoteLines(content).join("\n").trim();
+    return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+  }
   for (const s of NOTE_SECTIONS) {
     const f = content.sections[s];
     if ((f.state === "informado" || f.state === "historico") && f.text?.trim()) {
@@ -234,6 +238,7 @@ export function noteAsText(content: NoteContent, problems: Map<string, string>, 
 /** Rascunho completo para revisão (inclui o estado de cada campo, com a chave da seção). */
 export function draftForReview(content: NoteContent, problems: Map<string, string>): string {
   const out: string[] = [];
+  if (content.schema === 2) return simpleNoteLines(content).join("\n").slice(0, 20000);
   for (const s of NOTE_SECTIONS) {
     const f = content.sections[s];
     out.push(`[${s}] ${SECTION_LABELS[s]} (${FIELD_STATE_LABELS[f.state]}): ${f.text?.trim() || "—"}`);
@@ -243,3 +248,49 @@ export function draftForReview(content: NoteContent, problems: Map<string, strin
   }
   return out.join("\n").slice(0, 20000);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Evolução simples (ADR 0015): um texto livre do dia → evolução organizada + destaques + tarefas
+// para checar no dia seguinte (nascem 'proposed').
+// ---------------------------------------------------------------------------------------------
+export const OrganizeOutput = z.object({
+  destaques: Bullets.transform((a) => a.map((s) => s.slice(0, 300)).slice(0, 8)),
+  evolucao: z.string().trim().catch("").transform((s) => s.slice(0, 20000)),
+  tarefas: TaskSuggestions.shape.tarefas.transform((a) => a.slice(0, 5)),
+});
+export type OrganizeOutput = z.infer<typeof OrganizeOutput>;
+
+export function organizeSystem(maxTasks: number) {
+  return `${BASE}
+Organize a evolução do dia a partir do TEXTO DO DIA (ditado/anotações do médico). O restante do material (contexto do paciente,
+problemas, exames confirmados, evolução anterior) serve só para entender o caso: não copie para a evolução de hoje nada que não
+tenha sido dito hoje, exceto para situar brevemente (ex.: "D3 de antibiótico" se constar). Exame físico e resultados antigos nunca viram atuais.
+Responda somente JSON:
+{"destaques":["..."],"evolucao":"...","tarefas":[{"taskType":"agendar_exame|confirmar_realizacao|obter_laudo|revisar_resultado|contatar|reavaliar|documentar|outro","action":"verbo no infinitivo, curto","completionCriterion":"como saber que terminou","priority":"baixa|normal|alta|critica"}]}
+- destaques: até 6 linhas com o que é mais importante hoje (piora, alteração relevante, decisão tomada, risco). Lista vazia se nada se destaca.
+- evolucao: texto corrido e organizado em blocos curtos com título em linha própria, só os que tiverem conteúdo:
+  Resumo do dia / Exame / Exames e resultados / Avaliação / Conduta / Pendências. Sem markdown pesado.
+- tarefas: no máximo ${maxTasks} itens a CHECAR AMANHÃ (resultado a ver, exame a confirmar, reavaliação combinada, contato a fazer),
+  só o que decorre do texto do dia e que ainda não está na lista de tarefas abertas. Nada de conduta terapêutica nova. Lista vazia se nada faltar.`;
+}
+
+export const PatientPhotoOutput = z.object({
+  legivel: z.boolean().catch(false).default(false),
+  nome: z.string().trim().max(200).nullable().catch(null).default(null),
+  nascimento: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .catch(null)
+    .default(null),
+  leito: z.string().trim().max(120).nullable().catch(null).default(null),
+  prontuario: z.string().trim().max(80).nullable().catch(null).default(null),
+  sexo: z.enum(["F", "M", "I"]).nullable().catch(null).default(null),
+});
+export type PatientPhotoOutput = z.infer<typeof PatientPhotoOutput>;
+
+export const PATIENT_PHOTO_SYSTEM = `Identifique o paciente na foto (etiqueta, pulseira, prontuário, tela do sistema do hospital ou folha de evolução).
+Transcreva exatamente o que estiver escrito; nunca deduza nem complete. Responda somente JSON:
+{"legivel":true,"nome":"nome completo como impresso ou null","nascimento":"AAAA-MM-DD ou null","leito":"leito/quarto/setor como impresso ou null","prontuario":"número de prontuário/atendimento ou null","sexo":"F|M|I ou null"}
+- nascimento: só a data de nascimento (não a de internação nem a idade). Converta DD/MM/AAAA para AAAA-MM-DD.
+- Se houver mais de um paciente, ou nada legível, legivel=false e campos null.`;

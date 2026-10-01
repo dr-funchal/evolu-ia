@@ -1,4 +1,4 @@
-import { NOTE_SECTIONS, type NoteContent, type NoteField, type NoteSection } from "@evolu/contracts";
+import { NOTE_SECTIONS, type NoteContent, type NoteField, type NoteSection, type SimpleNote, type StructuredNote } from "@evolu/contracts";
 
 export const SECTION_LABELS: Record<NoteSection, string> = {
   contexto: "Contexto / motivo",
@@ -30,16 +30,17 @@ export const CARRY_FORWARD_SECTIONS: readonly NoteSection[] = ["contexto", "ante
 
 const empty = (): NoteField => ({ state: "nao_informado" });
 
-export function emptyNoteContent(problemIds: string[] = []): NoteContent {
+export function emptyNoteContent(problemIds: string[] = []): StructuredNote {
   return {
     schema: 1,
-    sections: Object.fromEntries(NOTE_SECTIONS.map((s) => [s, empty()])) as NoteContent["sections"],
+    sections: Object.fromEntries(NOTE_SECTIONS.map((s) => [s, empty()])) as StructuredNote["sections"],
     problems: problemIds.map((problemId) => ({ problemId, avaliacao: empty(), plano: empty() })),
   };
 }
 
-export function prefillFromPrevious(previous: NoteContent, previousVersionId: string, problemIds: string[]): NoteContent {
+export function prefillFromPrevious(previous: NoteContent, previousVersionId: string, problemIds: string[]): StructuredNote {
   const next = emptyNoteContent(problemIds);
+  if (previous.schema !== 1) return next; // evolução simples não tem seções a herdar
   for (const s of CARRY_FORWARD_SECTIONS) {
     const f = previous.sections[s];
     if ((f.state === "informado" || f.state === "historico") && f.text?.trim()) {
@@ -73,6 +74,13 @@ export function checkFinalize(content: NoteContent, attendedAt: Date | null, now
     blocking.push({ code: "attended_at_missing", message: "Informe a data/hora do atendimento." });
   } else if (attendedAt.getTime() > now.getTime() + 5 * 60_000) {
     blocking.push({ code: "attended_at_future", message: "Horário do atendimento está no futuro." });
+  }
+  if (content.schema === 2) {
+    // Evolução simples: só exige conteúdo. Sem campos obrigatórios por seção.
+    if (!content.evolucao.trim() && !content.transcricao.trim()) {
+      blocking.push({ code: "empty_note", message: "A evolução está vazia." });
+    }
+    return { blocking, warnings };
   }
   for (const s of NOTE_SECTIONS) {
     if (content.sections[s].state === "historico") {
@@ -122,6 +130,13 @@ export function renderNoteText(
   lines.push(`Atendimento: ${meta.attendedAt} | Registro: ${meta.recordedAt} | Versão ${meta.versionNo}`);
   lines.push(`Autoria técnica: ${meta.authorName} (não constitui assinatura digital qualificada)`);
   lines.push("");
+  if (content.schema === 2) {
+    lines.push(...simpleNoteLines(content));
+    for (const a of meta.addenda ?? []) {
+      lines.push(`ADENDO (${a.createdAt}, ${a.authorName}) — motivo: ${a.reason}`, a.body, "");
+    }
+    return lines.join("\n");
+  }
   const fieldText = (f: NoteField) => (f.state === "informado" ? (f.text ?? "") : `[${FIELD_STATE_LABELS[f.state]}]`);
   for (const s of NOTE_SECTIONS) {
     lines.push(`${SECTION_LABELS[s]}:`);
@@ -143,4 +158,19 @@ export function renderNoteText(
     lines.push("");
   }
   return lines.join("\n");
+}
+
+/** Texto da evolução simples: destaques e evolução organizada (ou o texto livre, se não organizada). */
+export function simpleNoteLines(content: SimpleNote): string[] {
+  const lines: string[] = [];
+  if (content.destaques.length) {
+    lines.push("Destaques:", ...content.destaques.map((d) => `- ${d}`), "");
+  }
+  const body = content.evolucao.trim() || content.transcricao.trim();
+  if (body) lines.push(body, "");
+  return lines;
+}
+
+export function emptySimpleNote(): SimpleNote {
+  return { schema: 2, transcricao: "", evolucao: "", destaques: [] };
 }
